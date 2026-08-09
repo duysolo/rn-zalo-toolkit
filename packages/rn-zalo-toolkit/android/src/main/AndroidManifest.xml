@@ -1,0 +1,78 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Toàn bộ khai báo Zalo sống ở ĐÂY, không phải ở manifest của app.
+
+      Trước đây mỗi app tiêu thụ phải tự chép ba khối này vào manifest của mình, và một
+      script shell phải `sed` app id vào đúng chỗ mỗi lần đổi brand. Thiếu một khối = đăng
+      nhập treo im lặng, không có thông báo nào.
+
+      ⚠️ KHI MIGRATE: app PHẢI xoá khối `meta-data com.zing.zalo.zalosdk.appID` của mình.
+      Nếu không, manifest merger dừng build với:
+          Attribute meta-data#com.zing.zalo.zalosdk.appID@value value=(...) is also present
+          at [rn-zalo-toolkit] AndroidManifest.xml ... Suggestion: add 'tools:replace="android:value"'
+      Đó là hành vi ĐÚNG (sai cấu hình lên tiếng lúc build), nhưng thông báo khó đoán nên
+      docs/guides/migrate-from-react-native-zalo-kit.md chép nguyên văn nó.
+    -->
+
+    <application>
+        <meta-data
+            android:name="com.zing.zalo.zalosdk.appID"
+            android:value="@string/rn_zalo_toolkit_app_id" />
+
+        <!--
+          AAR của Zalo cố tình COMMENT OUT activity này (scheme phụ thuộc app id nên họ
+          không khai sẵn được). Vì vậy nó phải được khai ở đây, với placeholder do
+          build.gradle bơm vào.
+
+          BẢO MẬT - `exported="true"` là bắt buộc để trình duyệt gọi ngược về được, nhưng
+          custom scheme trên Android KHÔNG độc quyền: một app khác khai trùng
+          `zalo-<appId>` sẽ tranh redirect. Đây là giới hạn của nền tảng, không sửa được ở
+          tầng thư viện. Thứ bảo vệ thật là PKCE S256 - code bị cướp cũng không đổi được
+          token vì `codeVerifier` không rời native. Đó là một lý do nữa để chế độ
+          `exchange:'none'` ở lại mức thử nghiệm.
+
+          Module cũng bỏ qua im lặng mọi kết quả đến khi không có phiên đăng nhập nào đang
+          chờ, để app khác không bơm được state rác vào.
+        -->
+        <activity
+            android:name="com.zing.zalo.zalosdk.oauth.BrowserLoginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="zalo-${zaloAppId}" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Auto-init: `ZaloSDKApplication.wrap()` chạy mà app không phải sửa MainApplication.
+
+          `android:exported="false"` khai tường minh dù mặc định đã là false từ targetSdk 17 -
+          đây là thư viện public, không bắt người đọc đi tra mặc định.
+
+          `initOrder="90"` để chạy SAU FirebaseInitProvider (initOrder=100), tránh tranh thứ tự.
+
+          ⚠️ Provider chạy ở MỌI process của app, và `wrap()` kéo theo
+          `DeviceTracking.getDeviceId()` - một lượt I/O mạng. App nào muốn tự kiểm soát thì
+          dán vào manifest của mình:
+              <provider android:name="com.rnzalotoolkit.ZaloToolkitInitProvider"
+                        android:authorities="${applicationId}.rnzalotoolkit-init"
+                        tools:node="remove" />
+          rồi tự gọi `ZaloSDKApplication.wrap(this)`.
+        -->
+        <provider
+            android:name="com.rnzalotoolkit.ZaloToolkitInitProvider"
+            android:authorities="${applicationId}.rnzalotoolkit-init"
+            android:exported="false"
+            android:initOrder="90"
+            tools:node="merge" />
+    </application>
+
+    <!--
+      `<queries>` cho `com.zing.zalo` KHÔNG khai ở đây: AAR của Zalo đã tự khai rồi
+      (kiểm bằng cách giải nén sdk-auth-4.24.1101.aar). Khai lại chỉ là nhiễu.
+    -->
+</manifest>

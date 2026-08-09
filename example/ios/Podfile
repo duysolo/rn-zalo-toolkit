@@ -1,0 +1,40 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+platform :ios, '16.0'
+prepare_react_native_project!
+
+# KHÔNG có `pod 'ZaloSDK'` ở đây, và cũng không ở podspec của thư viện.
+#
+# SDK Zalo đến từ Swift Package `packages/rn-zalo-toolkit/ios/ZaloSDKBinary`, còn podspec
+# chỉ trỏ `vendored_frameworks` vào chính xcframework mà gói đó mô tả. Nghĩa là app này
+# KHÔNG kéo một dependency CocoaPods bên thứ ba nào cho Zalo.
+#
+# Muốn để Pods project tham chiếu thẳng Swift Package (thay vì vendored_frameworks), bỏ
+# comment dòng dưới. Đang thử nghiệm - xem ghi chú trong RnZaloToolkit.podspec.
+# $RnZaloToolkitUseSPM = true
+
+linkage = ENV['USE_FRAMEWORKS'] || 'static'
+Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+use_frameworks! :linkage => linkage.to_sym
+
+target 'RnZaloToolkitExample' do
+  config = use_native_modules!
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+    )
+  end
+end

@@ -1,0 +1,353 @@
+{
+  "$comment": [
+    "NGUỒN DUY NHẤT của bảng ánh xạ mã lỗi. Ba bộ test đọc đúng file này:",
+    "  - android/src/test/kotlin/com/rnzalotoolkit/ErrorMappingTest.kt  (JUnit, qua resources)",
+    "  - ios/Tests/ErrorMappingTests.swift                              (XCTest, qua Bundle.module)",
+    "  - src/__tests__/errorTable.test.ts                               (jest, import trực tiếp)",
+    "Thêm/sửa một dòng ở đây mà quên implement một phía => CI đỏ, không phải phát hiện trên máy thật.",
+    "",
+    "!!! CẢNH BÁO QUAN TRỌNG NHẤT: CÙNG MỘT SỐ, HAI NỀN TẢNG NGHĨA KHÁC NHAU !!!",
+    "  -7014  Android = ZALO_APP_NOT_INSTALLED   |  iOS = AuthenticationFailed",
+    "  -7015  Android = ZALO_OUT_OF_DATE         |  iOS = AuthenticationExceeded (rate limit)",
+    "Vì vậy MỌI dòng phải khai `platform`. Một bảng dùng chung là sai từ gốc.",
+    "Nguồn: javap -constants com.zing.zalo.zalosdk.ZaloOAuthResultCode (sdk-core 4.24.1101)",
+    "       ZaloSDKCoreKit.xcframework/.../Headers/ZDKZaloError.h (pod 4.1.0120)"
+  ],
+  "codes": [
+    {
+      "native": -7008,
+      "platform": "android",
+      "symbol": "ERR_USER_BACK",
+      "code": "CANCELLED",
+      "phase": "authorize"
+    },
+    {
+      "native": -7009,
+      "platform": "android",
+      "symbol": "ERR_USER_REJECT",
+      "code": "CANCELLED",
+      "phase": "authorize"
+    },
+    {
+      "native": -7014,
+      "platform": "android",
+      "symbol": "ERR_ZALO_APP_NOT_INSTALLED",
+      "code": "ZALO_NOT_INSTALLED",
+      "phase": "authorize",
+      "note": "iOS dùng CÙNG số này cho AuthenticationFailed - đừng gộp bảng"
+    },
+    {
+      "native": -7015,
+      "platform": "android",
+      "symbol": "ERR_ZALO_OUT_OF_DATE",
+      "code": "ZALO_OUT_OF_DATE",
+      "phase": "authorize",
+      "note": "iOS dùng CÙNG số này cho AuthenticationExceeded - đừng gộp bảng"
+    },
+    {
+      "native": -7007,
+      "platform": "android",
+      "symbol": "ERR_WEB_VIEW_LOGIN_NOT_ALLOWED",
+      "code": "INVALID_CONFIG",
+      "phase": "authorize"
+    },
+    {
+      "native": -7010,
+      "platform": "android",
+      "symbol": "ERR_ZALO_WEBVIEW_COOKIE_ERROR",
+      "code": "UNKNOWN",
+      "phase": "authorize"
+    },
+    {
+      "native": -8001,
+      "platform": "android",
+      "symbol": "ERR_NO_NETWORK",
+      "code": "NETWORK",
+      "phase": "authorize"
+    },
+    {
+      "native": -8000,
+      "platform": "android",
+      "symbol": "ERR_UNKNOWN_ERROR",
+      "code": "UNKNOWN",
+      "phase": "authorize"
+    },
+
+    {
+      "native": -7021,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeRequestCanceled",
+      "code": "CANCELLED",
+      "phase": "authorize"
+    },
+    {
+      "native": -7035,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeUserCancel",
+      "code": "CANCELLED",
+      "phase": "authorize"
+    },
+    {
+      "native": -1011,
+      "platform": "ios",
+      "symbol": "kxZACErrorCodeCancelRequestViaWebViewStepLogin",
+      "code": "CANCELLED",
+      "phase": "authorize"
+    },
+    {
+      "native": -1005,
+      "platform": "ios",
+      "symbol": "kxZACErrorCodeCancelRequestViaWebViewStepPermission",
+      "code": "CANCELLED",
+      "phase": "authorize"
+    },
+    {
+      "native": -1001,
+      "platform": "ios",
+      "symbol": "(không có trong ZDKZaloError.h)",
+      "code": "CANCELLED",
+      "phase": "authorize",
+      "note": "Demo chính hãng dùng chính mã này làm mốc 'không phải cancel' (Example/ZaloSDK/LoginViewController.swift:73) trong khi header KHÔNG khai. Header không phải nguồn đầy đủ - tập cancel là tập MỞ."
+    },
+    {
+      "native": -7023,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeRequiredZaloInstalled",
+      "code": "ZALO_NOT_INSTALLED",
+      "phase": "authorize"
+    },
+    {
+      "native": -7022,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeUnSupportVersion",
+      "code": "ZALO_OUT_OF_DATE",
+      "phase": "authorize"
+    },
+    {
+      "native": -7014,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeAuthenticationFailed",
+      "code": "UNKNOWN",
+      "phase": "authorize",
+      "note": "KHÔNG phải 'chưa cài Zalo' - đó là nghĩa của -7014 bên Android"
+    },
+    {
+      "native": -7015,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeAuthenticationExceeded",
+      "code": "RATE_LIMITED",
+      "phase": "authorize",
+      "note": "KHÔNG phải 'Zalo bản cũ' - đó là nghĩa của -7015 bên Android"
+    },
+    {
+      "native": -7024,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeServerConnection",
+      "code": "NETWORK",
+      "phase": "authorize"
+    },
+    {
+      "native": -7025,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeTimeOutRequest",
+      "code": "TIMEOUT",
+      "phase": "authorize"
+    },
+    {
+      "native": -8000,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeUnknownException",
+      "code": "UNKNOWN",
+      "phase": "authorize"
+    },
+    {
+      "native": -5005,
+      "platform": "ios",
+      "symbol": "kZaloSDKErrorCodeInvalidIOSBundleID",
+      "code": "INVALID_CONFIG",
+      "phase": "config"
+    },
+
+    {
+      "native": -5000,
+      "platform": "both",
+      "symbol": "ERR_APP_ID_IS_INVALID",
+      "code": "INVALID_CONFIG",
+      "phase": "config"
+    },
+    {
+      "native": -5001,
+      "platform": "both",
+      "symbol": "ERR_INVALID_CALLBACK_URL",
+      "code": "INVALID_CONFIG",
+      "phase": "config"
+    },
+    {
+      "native": -5002,
+      "platform": "both",
+      "symbol": "ERR_INVALID_CLIENT_SECRET",
+      "code": "INVALID_CONFIG",
+      "phase": "config"
+    },
+    {
+      "native": -5006,
+      "platform": "both",
+      "symbol": "ERR_INVALID_ANDROID_PACKAGE",
+      "code": "INVALID_CONFIG",
+      "phase": "config"
+    },
+    {
+      "native": -5008,
+      "platform": "both",
+      "symbol": "ERR_INVALID_ANDROID_SIGN_KEY",
+      "code": "INVALID_CONFIG",
+      "phase": "config",
+      "note": "Hash key sai = base64(SHA-1) của keystore chưa đăng ký portal. nativeMessage phải kèm hash key hiện tại."
+    },
+    {
+      "native": -5009,
+      "platform": "both",
+      "symbol": "ERR_INVALID_CODE_CHALLENGE",
+      "code": "INVALID_CONFIG",
+      "phase": "authorize"
+    },
+    {
+      "native": -5010,
+      "platform": "both",
+      "symbol": "ERR_INVALID_CODE_VERIFIER",
+      "code": "INVALID_CONFIG",
+      "phase": "exchange"
+    },
+    {
+      "native": -5003,
+      "platform": "both",
+      "symbol": "ERR_INVALID_OAUTHORIZED_CODE",
+      "code": "INVALID_TOKEN",
+      "phase": "exchange"
+    },
+    {
+      "native": -5004,
+      "platform": "both",
+      "symbol": "ERR_INVALID_ACCESS_TOKEN",
+      "code": "INVALID_TOKEN",
+      "phase": "profile"
+    },
+    {
+      "native": -5007,
+      "platform": "both",
+      "symbol": "ERR_INVALID_SESSION",
+      "code": "INVALID_TOKEN",
+      "phase": "authorize"
+    },
+    {
+      "native": -5011,
+      "platform": "both",
+      "symbol": "ERR_INVALID_REFRESH_TOKEN",
+      "code": "INVALID_TOKEN",
+      "phase": "exchange"
+    },
+    {
+      "native": -5016,
+      "platform": "both",
+      "symbol": "ERR_AUTHORIZED_CODE_EXPIRED",
+      "code": "INVALID_TOKEN",
+      "phase": "exchange"
+    },
+    {
+      "native": -5017,
+      "platform": "both",
+      "symbol": "ERR_REFRESH_TOKEN_EXPIRED",
+      "code": "INVALID_TOKEN",
+      "phase": "exchange"
+    },
+    {
+      "native": -5020,
+      "platform": "both",
+      "symbol": "ERR_OAUTH_CODE_INVALID",
+      "code": "INVALID_TOKEN",
+      "phase": "exchange"
+    },
+    {
+      "native": -5018,
+      "platform": "both",
+      "symbol": "ERR_INVALID_STATE",
+      "code": "UNKNOWN",
+      "phase": "authorize",
+      "note": "CSRF - state không khớp. Đáng log riêng, có thể là dấu hiệu bị cướp scheme."
+    },
+    {
+      "native": -6002,
+      "platform": "both",
+      "symbol": "ERR_USER_NOT_LOGIN",
+      "code": "INVALID_TOKEN",
+      "phase": "authorize"
+    },
+    {
+      "native": -6003,
+      "platform": "both",
+      "symbol": "ERR_USER_NOT_CONSENT",
+      "code": "CANCELLED",
+      "phase": "authorize",
+      "note": "User không đồng ý cấp quyền - về mặt UX là huỷ, không phải lỗi."
+    },
+    {
+      "native": -6005,
+      "platform": "both",
+      "symbol": "ERR_USER_BANNED",
+      "code": "INVALID_CONFIG",
+      "phase": "authorize"
+    },
+    {
+      "native": -7004,
+      "platform": "both",
+      "symbol": "ERR_APPLICATION_IS_NOT_APPROVED",
+      "code": "INVALID_CONFIG",
+      "phase": "config",
+      "note": "App trên portal chưa duyệt hoặc bị admin tắt."
+    },
+
+    {
+      "native": -501,
+      "platform": "both",
+      "symbol": "(graph.zalo.me)",
+      "code": "PROFILE_RESTRICTED",
+      "phase": "profile",
+      "note": "Zalo chặn theo IP: 'Personal information is limited due to IP address not inside Vietnam'. KHÔNG được làm đứt luồng login - backend chạy IP VN tự resolve được."
+    },
+    {
+      "native": 12000,
+      "platform": "both",
+      "symbol": "graph quota",
+      "code": "RATE_LIMITED",
+      "phase": "profile"
+    },
+    {
+      "native": 12002,
+      "platform": "both",
+      "symbol": "graph quota daily",
+      "code": "RATE_LIMITED",
+      "phase": "profile"
+    },
+    {
+      "native": 12003,
+      "platform": "both",
+      "symbol": "graph quota weekly",
+      "code": "RATE_LIMITED",
+      "phase": "profile"
+    },
+    {
+      "native": 12004,
+      "platform": "both",
+      "symbol": "graph quota monthly",
+      "code": "RATE_LIMITED",
+      "phase": "profile"
+    },
+    {
+      "native": 12010,
+      "platform": "both",
+      "symbol": "graph quota daily per user",
+      "code": "RATE_LIMITED",
+      "phase": "profile"
+    }
+  ]
+}

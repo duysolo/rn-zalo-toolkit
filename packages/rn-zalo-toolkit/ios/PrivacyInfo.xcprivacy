@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Privacy manifest cho MÃ CỦA CHÍNH rn-zalo-toolkit.
+
+	  Bản thân thư viện này không đọc UserDefaults, không đọc timestamp file, không đọc
+	  disk space, không đọc system boot time và không chạm IDFA. Nó chỉ gọi vào ZaloSDK.
+
+	  ⚠️ SDK ZALO KHÔNG CÓ PRIVACY MANIFEST (kiểm 4.1.0120: không có file .xcprivacy nào
+	  trong xcframework). Vì vậy APP TIÊU THỤ phải tự khai phần của SDK trong
+	  PrivacyInfo.xcprivacy của mình - xem docs/guides/setup-ios.md. Tóm tắt:
+
+	    NSPrivacyAccessedAPICategoryUserDefaults  → CA92.1
+	        ZaloSDK + ZaloSDKCoreKit dùng NSUserDefaults để lưu token/state.
+	    NSPrivacyAccessedAPICategoryFileTimestamp → C617.1
+	        -[UIDevice(ZDKExtension) zdkCreationDateId] đọc attributesOfItemAtPath:
+	        + NSFileCreationDate để định danh thiết bị.
+
+	  KHÔNG cần khai SystemBootTime (SDK chỉ sysctlbyname các khoá hw.*), KHÔNG cần
+	  DiskSpace, KHÔNG cần ActiveKeyboards. Keychain SecItem* không thuộc danh sách
+	  required-reason.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+</dict>
+</plist>

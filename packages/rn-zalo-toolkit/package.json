@@ -1,0 +1,132 @@
+{
+  "name": "rn-zalo-toolkit",
+  "version": "0.1.0",
+  "description": "Zalo authentication for React Native. Wraps the official Android and iOS SDKs, resolves the iOS SDK through Swift Package Manager instead of CocoaPods, and guarantees every call settles.",
+  "main": "./dist/commonjs/index.js",
+  "module": "./dist/module/index.js",
+  "types": "./dist/typescript/commonjs/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": {
+        "types": "./dist/typescript/module/index.d.ts",
+        "default": "./dist/module/index.js"
+      },
+      "require": {
+        "types": "./dist/typescript/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    },
+    "./jest": {
+      "source": "./src/jest/index.ts",
+      "import": {
+        "types": "./dist/typescript/module/jest/index.d.ts",
+        "default": "./dist/module/jest/index.js"
+      },
+      "require": {
+        "types": "./dist/typescript/commonjs/jest/index.d.ts",
+        "default": "./dist/commonjs/jest/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "src",
+    "dist",
+    "android",
+    "ios",
+    "RnZaloToolkit.podspec",
+    "!android/build",
+    "!android/.gradle",
+    "!ios/build",
+    "!**/__tests__",
+    "!**/.*"
+  ],
+  "scripts": {
+    "prepare": "bob build",
+    "prepack": "node ../../scripts/prepack-readme.mjs packages/rn-zalo-toolkit",
+    "build": "bob build",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json"
+  },
+  "keywords": [
+    "react-native",
+    "zalo",
+    "zalo-sdk",
+    "zalo-login",
+    "oauth",
+    "authentication",
+    "swift-package-manager",
+    "spm",
+    "turbomodule"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/duysolo/rn-zalo-toolkit.git",
+    "directory": "packages/rn-zalo-toolkit"
+  },
+  "homepage": "https://github.com/duysolo/rn-zalo-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/duysolo/rn-zalo-toolkit/issues"
+  },
+  "author": "duysolo",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": ">=0.85.0 <0.87.0"
+  },
+  "codegenConfig": {
+    "name": "RnZaloToolkitSpec",
+    "type": "modules",
+    "jsSrcsDir": "src/specs",
+    "android": {
+      "javaPackageName": "com.rnzalotoolkit"
+    },
+    "ios": {
+      "modulesProvider": {
+        "RnZaloToolkit": "RnZaloToolkit"
+      }
+    }
+  },
+  "sdkVersions": {
+    "android": {
+      "zaloSdk": "4.24.1101",
+      "zaloMavenUrl": "https://gitlab.com/api/v4/projects/50747855/packages/maven",
+      "minSdk": 24
+    },
+    "ios": {
+      "zaloSdk": "4.1.0120",
+      "iosTarget": "15.1"
+    }
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "dist",
+    "exclude": "**/{__tests__,__fixtures__}/**",
+    "targets": [
+      "commonjs",
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "typescript",
+        {
+          "tsc": "../../node_modules/.bin/tsc"
+        }
+      ]
+    ]
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "rn-zalo-toolkit-doctor": "./bin/doctor.mjs"
+  }
+}

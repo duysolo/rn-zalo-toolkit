@@ -1,0 +1,8 @@
+// npm workspaces hoist node_modules to the repository root, one level above the
+// example app, so these paths differ from the React Native template.
+pluginManagement { includeBuild("../../node_modules/@react-native/gradle-plugin") }
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'RnZaloToolkitExample'
+include ':app'
+includeBuild('../../node_modules/@react-native/gradle-plugin')

@@ -1,0 +1,197 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Thứ hai 02:00 UTC - chỉ để job upstream-watch chạy.
+    - cron: '0 2 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  javascript:
+    name: JavaScript
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # Cổng duy nhất soi tarball thật (thiếu manifest, thiếu consumer-rules, lọt build/,
+      # thiếu `exports.require`). Không có dòng này thì nó chỉ chạy khi ai đó nhớ gõ tay.
+      - run: npm run verify:package
+
+  # JUnit + Robolectric. KHÔNG cần emulator, nên rẻ và chạy được mọi PR.
+  # Trong đó có bài quan trọng nhất: đối chiếu ErrorMapping.kt với src/errorTable.json.
+  android-unit:
+    name: Android unit test
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci --ignore-scripts
+      - run: ./gradlew :rn-zalo-toolkit:testDebugUnitTest --no-daemon
+        working-directory: example/android
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-test-results
+          path: packages/rn-zalo-toolkit/android/build/reports/tests/
+
+  android-build:
+    name: Android build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci --ignore-scripts
+      # Build cả app, không chỉ library: đây là thứ duy nhất kiểm được manifest merger
+      # (placeholder `zalo-${zaloAppId}`, meta-data, ContentProvider) và autolinking.
+      - run: ./gradlew :app:assembleDebug --no-daemon
+        working-directory: example/android
+
+  # Negative test: `zaloAppId` rỗng PHẢI làm build fail, và thông báo phải chỉ đúng chỗ sửa.
+  #
+  # Đây là bài kiểm cho một quyết định thiết kế, không phải cho code: `aapt2` CHẤP NHẬN chuỗi
+  # rỗng, nên nếu ai đó "đơn giản hoá" bằng cách bỏ khối kiểm trong build.gradle thì build sẽ
+  # xanh trở lại và sinh ra `android:scheme="zalo-"` im lặng. Job này bắt đúng lúc đó.
+  android-missing-appid-must-fail:
+    name: Android - thiếu zaloAppId phải fail
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci --ignore-scripts
+      - name: Build với zaloAppId rỗng
+        working-directory: example/android
+        run: |
+          set +e
+          output=$(./gradlew :rn-zalo-toolkit:assembleDebug -PzaloAppId= --no-daemon 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ $status -eq 0 ]; then
+            echo "::error::Build THÀNH CÔNG với zaloAppId rỗng. Khối kiểm trong android/build.gradle đã bị gỡ hoặc hỏng."
+            exit 1
+          fi
+          if ! echo "$output" | grep -q "rn-zalo-toolkit: thiếu hoặc sai"; then
+            echo "::error::Build fail nhưng KHÔNG phải vì lỗi của ta - thông báo hướng dẫn đã mất."
+            exit 1
+          fi
+          echo "✔ fail đúng cách, kèm hướng dẫn"
+
+  ios:
+    name: iOS
+    runs-on: macos-15
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Typecheck Swift với SDK iOS thật + xcframework đã vendor. Rẻ hơn build cả app rất
+      # nhiều mà vẫn chứng minh được API gọi khớp header thật của SDK Zalo.
+      - name: Typecheck Swift
+        working-directory: packages/rn-zalo-toolkit/ios
+        run: |
+          SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          xcrun swiftc -typecheck -sdk "$SDK" -target arm64-apple-ios15.1-simulator \
+            -F ZaloSDKBinary/Frameworks/ZaloSDK.xcframework/ios-arm64_x86_64-simulator \
+            -F ZaloSDKBinary/Frameworks/ZaloSDKCoreKit.xcframework/ios-arm64_x86_64-simulator \
+            ErrorMapping.swift PromiseGate.swift ZaloConfig.swift InstallCheck.swift \
+            RnZaloToolkitCore.swift ZaloToolkit.swift
+      - name: Swift Package của SDK Zalo phải hợp lệ
+        working-directory: packages/rn-zalo-toolkit/ios/ZaloSDKBinary
+        run: swift package dump-package > /dev/null
+      - run: node scripts/check-zalosdk-binary.mjs
+      - name: pod install
+        working-directory: example/ios
+        run: pod install --repo-update
+      - name: Build example
+        working-directory: example/ios
+        # `shell: bash` là BẮT BUỘC: shell mặc định của GitHub Actions là `bash -e {0}`,
+        # KHÔNG có `pipefail`. Không có nó thì exit code của pipeline = exit của `xcpretty`
+        # = 0, và một build hỏng vẫn xanh - đúng lý do lỗi podspec đã lọt qua.
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild -workspace RnZaloToolkitExample.xcworkspace \
+            -scheme RnZaloToolkitExample -sdk iphonesimulator \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            build CODE_SIGNING_ALLOWED=NO | xcpretty || exit 1
+
+  # Podspec KHÔNG được khai dependency CocoaPods bên thứ ba nào - đó là toàn bộ lý do
+  # package này tồn tại ở dạng hiện tại. Rẻ nên chạy trên ubuntu.
+  no-cocoapods-dependency:
+    name: Không có dependency CocoaPods
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kiểm podspec
+        run: |
+          if grep -nE '^\s*s\.dependency\s+["'"'"']' packages/rn-zalo-toolkit/RnZaloToolkit.podspec; then
+            echo "::error::podspec khai s.dependency - SDK Zalo phải đến từ ios/ZaloSDKBinary (Swift Package)."
+            exit 1
+          fi
+          echo "✔ không có s.dependency nào"
+      - name: Privacy manifest phải còn
+        run: |
+          test -f packages/rn-zalo-toolkit/ios/PrivacyInfo.xcprivacy \
+            || { echo "::error::thiếu ios/PrivacyInfo.xcprivacy"; exit 1; }
+          grep -q 'resource_bundles' packages/rn-zalo-toolkit/RnZaloToolkit.podspec \
+            || { echo "::error::podspec phải ship .xcprivacy qua resource_bundles - source_files không bắt được đuôi này"; exit 1; }
+          echo "✔ privacy manifest được ship đúng đường"
+
+  # THÔNG BÁO, không phải cổng chặn. Đây là cơ chế duy nhất phát hiện Zalo ra bản SDK mới
+  # (hoặc đứng yên quá lâu) mà không cần ai nhớ.
+  upstream-watch:
+    name: Theo dõi bản SDK mới
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-upstream-versions.mjs

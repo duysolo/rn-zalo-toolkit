@@ -1,0 +1,205 @@
+buildscript {
+  ext.getExtOrDefault = { name, fallback ->
+    return rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback
+  }
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath "com.android.tools.build:gradle:8.7.2"
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${getExtOrDefault('kotlinVersion', '2.0.21')}"
+  }
+}
+
+def packageJson = new groovy.json.JsonSlurper().parseText(file("$projectDir/../package.json").text)
+def sdkVersions = packageJson.sdkVersions.android
+
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+/**
+ * `zaloAppId` là NGUỒN DUY NHẤT của app id trên Android. Nó thay thế hoàn toàn việc phải
+ * `sed` cùng một con số vào ba file (`strings.xml`, `AndroidManifest.xml`, và bản thân app id).
+ *
+ * Đọc theo thứ tự: `rootProject.ext` → project property (tức `android/gradle.properties`).
+ * Hỗ trợ cả hai vì script đổi brand sửa file `gradle.properties` dễ hơn sửa `build.gradle`.
+ */
+def resolveZaloAppId = {
+  def value = rootProject.ext.has('zaloAppId')
+      ? rootProject.ext.get('zaloAppId')
+      : (rootProject.findProperty('zaloAppId') ?: '')
+  return value.toString().trim()
+}
+
+def zaloAppId = resolveZaloAppId()
+
+/**
+ * Fail Ở BƯỚC BUILD, không phải lúc người dùng bấm đăng nhập.
+ *
+ * Đây không phải sự cẩn thận thừa: `aapt2` CHẤP NHẬN chuỗi rỗng. Nếu chỉ dựa vào
+ * `manifestPlaceholders` với giá trị mặc định là '', build sẽ xanh và sinh ra
+ * `android:scheme="zalo-"` hoàn toàn im lặng - lỗi chỉ lộ ra khi Zalo từ chối đăng nhập
+ * trên máy người dùng thật.
+ */
+if (!(zaloAppId ==~ /^\d{6,}$/)) {
+  throw new GradleException(
+    "rn-zalo-toolkit: thiếu hoặc sai `zaloAppId` (đang là: '${zaloAppId}').\n" +
+    "\n" +
+    "Thêm vào android/gradle.properties của app:\n" +
+    "    zaloAppId=1993903030729882479\n" +
+    "\n" +
+    "hoặc android/build.gradle:\n" +
+    "    buildscript { ext { zaloAppId = \"1993903030729882479\" } }\n" +
+    "\n" +
+    "App id lấy ở https://developers.zalo.me → chọn ứng dụng → App ID."
+  )
+}
+
+android {
+  namespace "com.rnzalotoolkit"
+  compileSdk getExtOrDefault("compileSdkVersion", 35)
+
+  defaultConfig {
+    minSdk Math.max(getExtOrDefault("minSdkVersion", 24), sdkVersions.minSdk)
+    consumerProguardFiles "consumer-rules.pro"
+
+    // Dùng cho `android:scheme="zalo-${zaloAppId}"` - scheme vốn đã là chuỗi.
+    manifestPlaceholders = [zaloAppId: zaloAppId]
+
+    // meta-data thì KHÔNG dùng literal. Mọi Zalo app id đều 19 chữ số, vượt int32;
+    // `aapt2` khi gặp literal số quá lớn sẽ rơi về kiểu chuỗi - hoạt động, nhưng đó là
+    // hành vi dự phòng chứ không phải hợp đồng. Đi qua string resource thì kiểu là xác định.
+    resValue "string", "rn_zalo_toolkit_app_id", zaloAppId
+
+    // `getSdkVersion()` báo cả version thư viện lẫn version SDK Zalo. Lấy từ package.json
+    // để không có hai nguồn số version lệch nhau.
+    buildConfigField "String", "TOOLKIT_VERSION", "\"${packageJson.version}\""
+    buildConfigField "String", "ZALO_SDK_VERSION", "\"${sdkVersions.zaloSdk}\""
+  }
+
+  buildFeatures {
+    buildConfig true
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs += "src/main/kotlin"
+    }
+    test {
+      java.srcDirs += "src/test/kotlin"
+      // CỐ Ý KHÔNG thêm `resources.srcDirs += "../src"`.
+      //
+      // Nó có vẻ tiện để JUnit đọc `errorTable.json`, nhưng Gradle sẽ copy TOÀN BỘ thư mục
+      // `src` (gồm cả `__tests__`) vào build intermediates, và jest nhặt lại đúng những file
+      // test đó - chạy mỗi bài test HAI lần và báo số lượng gấp đôi.
+      // `ErrorMappingTest` đọc `../src/errorTable.json` theo đường dẫn tương đối, không cần.
+    }
+  }
+
+  testOptions {
+    unitTests {
+      includeAndroidResources = true
+      returnDefaultValues = true
+    }
+  }
+
+  // Thư viện KHÔNG khai `targetSdkVersion`: AGP 8 đã deprecate cho module library và nó
+  // chỉ tạo cảnh báo ồn.
+}
+
+/**
+ * Repo Maven của Zalo, khai một chỗ dùng hai nơi.
+ *
+ * `content { includeGroup "me.zalo" }` là bắt buộc chứ không phải tối ưu: thiếu nó thì MỌI
+ * dependency không tìm thấy ở nơi khác đều đi hỏi GitLab - chậm, và mở cửa cho
+ * dependency confusion.
+ */
+def zaloMaven = { org.gradle.api.artifacts.dsl.RepositoryHandler handler ->
+  handler.maven {
+    url sdkVersions.zaloMavenUrl
+    content { includeGroup "me.zalo" }
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+  zaloMaven(delegate)
+}
+
+/**
+ * TIÊM repo vào app tiêu thụ - đừng bắt app tự khai.
+ *
+ * Khai `repositories {}` ở đây CHỈ đủ để biên dịch chính module này. Khi `:app` resolve
+ * `debugRuntimeClasspath`, Gradle dùng repositories của `:app`, nên nếu không tiêm thì build
+ * chết với:
+ *     Could not find me.zalo:sdk-auth:4.24.1101
+ *     Required by: project ':app' > project ':rn-zalo-toolkit'
+ * Đây là lỗi đã dựng lại được bằng build thật, không phải phòng xa.
+ *
+ * Tiêm ở đây đúng với mục tiêu "thư viện tự lo cấu hình của mình": app chỉ khai `zaloAppId`.
+ * App nào muốn tự quản repo thì đặt `ext.rnZaloToolkitSkipRepoInjection = true` ở root.
+ */
+if (!rootProject.ext.has('rnZaloToolkitSkipRepoInjection')) {
+  rootProject.allprojects { project ->
+    project.repositories { zaloMaven(delegate) }
+  }
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+
+  // PIN CỨNG. Thư viện cũ dùng `me.zalo:sdk-core:+` và hậu quả đo được ngay trên máy dev:
+  // gradle cache chứa HAI version từng resolve (4.2.0724 và 4.24.1101). Build không
+  // reproducible là hạng lỗi "lúc chạy lúc không" tốn nhiều thời gian nhất.
+  //
+  // POM của Zalo pin exact (sdk-auth → sdk-core cùng version), nên một dòng là đủ.
+  // `sdk-openapi` KHÔNG cần cho phạm vi auth: getProfile, ZaloOpenAPICallback,
+  // OAuthCompleteListener, onActivityResult, ZaloSDKApplication.wrap đều nằm trong sdk-auth;
+  // sdk-openapi chỉ chứa feed/share.
+  def zaloSdkVersion = getExtOrDefault('zaloSdkVersion', sdkVersions.zaloSdk)
+
+  implementation("me.zalo:sdk-auth:$zaloSdkVersion") {
+    // legacy-support-v4:1.0.0 là gói tổng hợp từ 2018, kéo theo ~10 module androidx đời đầu.
+    // Quét class thật của sdk-auth chỉ thấy androidx.annotation / androidx.core / androidx.fragment.
+    exclude group: "androidx.legacy", module: "legacy-support-v4"
+  }
+
+  // `sdk-core` phải khai TƯỜNG MINH dù `sdk-auth` đã kéo nó theo.
+  // `implementation` không đưa dependency bắc cầu lên compile classpath, mà thư viện này
+  // dùng trực tiếp hai lớp trong đó:
+  //   - `ZaloOAuthResultCode`  → bảng ánh xạ lỗi đọc hằng số của SDK thay vì viết số tay
+  //   - `AppInfo`              → hash key chữ ký, phải là ĐÚNG chuỗi SDK gửi lên Zalo
+  // Cùng version với sdk-auth để không bao giờ lệch.
+  implementation("me.zalo:sdk-core:$zaloSdkVersion") {
+    exclude group: "androidx.legacy", module: "legacy-support-v4"
+  }
+
+  implementation "androidx.fragment:fragment:1.8.6"
+
+  // `org.json` trong android.jar chỉ là STUB: với `returnDefaultValues = true` nó trả null
+  // thay vì hoạt động, nên mọi test đụng JSON sẽ NPE. Bản thật phải nằm trên test classpath.
+  testImplementation "org.json:json:20240303"
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "org.robolectric:robolectric:4.13"
+  testImplementation "androidx.test:core:1.6.1"
+}
+
+react {
+  jsRootDir = file("../src/specs")
+  libraryName = "RnZaloToolkit"
+  codegenJavaPackageName = "com.rnzalotoolkit"
+}
