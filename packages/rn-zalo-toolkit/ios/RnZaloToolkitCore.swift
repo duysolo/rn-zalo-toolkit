@@ -13,9 +13,9 @@ import ZaloSDK
 /// (`com.meta.react.turbomodulemanager.queue`), nên mỗi entry point ở đây bắt đầu bằng
 /// `onMain { }` - không có ngoại lệ "hàm này nhẹ".
 ///
-/// Đây không phải sự cẩn thận thừa: `react-native-zalo-kit` gọi `[ZaloSDK unauthenticate]`
-/// thẳng trên hàng đợi TurboModule và làm corrupt bộ nhớ Hermes → crash. Một app production
-/// đã phải gỡ hẳn chức năng đăng xuất Zalo để né.
+/// Đây không phải cẩn thận thừa: gọi `[ZaloSDK unauthenticate]` thẳng trên hàng đợi
+/// TurboModule làm corrupt bộ nhớ Hermes và crash app. Đã có app production phải gỡ hẳn
+/// chức năng đăng xuất Zalo để né lỗi này.
 @objc(RnZaloToolkitCore)
 public final class RnZaloToolkitCore: NSObject {
     public typealias Resolve = (Any?) -> Void
@@ -255,7 +255,7 @@ public final class RnZaloToolkitCore: NSObject {
                 guard let tokenResponse, tokenResponse.isSucess,
                       let accessToken = tokenResponse.accessToken, !accessToken.isEmpty
                 else {
-                    // Nhánh này trước đây bị nuốt hoàn toàn ở `react-native-zalo-kit` -
+                    // Nhánh này rất dễ bị bỏ quên -
                     // promise treo vĩnh viễn và JS diễn giải nhầm thành "người dùng huỷ".
                     gate.fail(ErrorMapping.error(
                         native: tokenResponse?.errorCode ?? 0,
@@ -367,8 +367,8 @@ public final class RnZaloToolkitCore: NSObject {
 
     @objc public func logout(resolve: @escaping Resolve, reject: @escaping Reject) {
         // `unauthenticate` là đồng bộ (`ZDK.h` khai trả `void`) nên không có callback để chờ.
-        // Nhưng nó VẪN phải chạy trên main queue - đây chính là dòng đã gây crash Hermes ở
-        // thư viện cũ.
+        // Nhưng nó vẫn phải chạy trên main queue: chính dòng này là thứ gây crash Hermes
+        // khi chạy sai queue.
         onMain { [self] in
             // Huỷ phiên login đang dở TRƯỚC khi xoá token: nếu không, bước đổi token của
             // phiên đó có thể về sau `logout()` và ghi lại `sessionAccessToken`.

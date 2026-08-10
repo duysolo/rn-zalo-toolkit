@@ -12,10 +12,10 @@
  */
 
 import NativeZaloToolkit from './specs/NativeRnZaloToolkit'
-import { ZaloError, zaloErrorFrom } from './errors'
+import { ZaloError, ZaloErrorCode, ZaloErrorPhase, zaloErrorFrom } from './errors'
+import { ZaloEventName } from './types'
 import type {
   ZaloEventListener,
-  ZaloEventName,
   ZaloInstallReport,
   ZaloLoginOptions,
   ZaloLoginResult,
@@ -25,7 +25,6 @@ import type {
   ZaloSubscription,
   ZaloTokens,
 } from './types'
-import type { ZaloErrorPhase } from './errors'
 
 export * from './types'
 export {
@@ -33,9 +32,9 @@ export {
   zaloErrorFrom,
   zaloErrorCodes,
   isZaloErrorCode,
-  type ZaloErrorCode,
+  ZaloErrorCode,
   type ZaloErrorDetails,
-  type ZaloErrorPhase,
+  ZaloErrorPhase,
 } from './errors'
 
 /** Bọc lời gọi native: parse JSON kết quả, và chuẩn hoá MỌI lỗi thành `ZaloError`. */
@@ -51,7 +50,7 @@ const call = async <T>(phase: ZaloErrorPhase, run: () => Promise<string>): Promi
   } catch {
     // Native trả chuỗi không phải JSON - lỗi lập trình của chính thư viện này, không phải
     // của người dùng. Vẫn phải là ZaloError để người gọi chỉ cần bắt một loại.
-    throw new ZaloError('UNKNOWN', 'rn-zalo-toolkit: native trả về JSON không hợp lệ', {
+    throw new ZaloError(ZaloErrorCode.UNKNOWN, 'rn-zalo-toolkit: native trả về JSON không hợp lệ', {
       phase,
       nativeMessage: raw,
     })
@@ -66,7 +65,7 @@ const call = async <T>(phase: ZaloErrorPhase, run: () => Promise<string>): Promi
  * Google/Apple), hãy **dịch** ở lớp service của app thay vì để mã của thư viện chảy lên UI.
  */
 export const login = (options: ZaloLoginOptions = {}): Promise<ZaloLoginResult> =>
-  call<ZaloLoginResult>('authorize', () => NativeZaloToolkit.login(JSON.stringify(options)))
+  call<ZaloLoginResult>(ZaloErrorPhase.AUTHORIZE, () => NativeZaloToolkit.login(JSON.stringify(options)))
 
 /**
  * Đổi `oauthCode` lấy token. Chỉ cần khi dùng `login({ exchange: 'none' })`.
@@ -74,11 +73,11 @@ export const login = (options: ZaloLoginOptions = {}): Promise<ZaloLoginResult> 
  * `codeVerifier` là bí mật một lần của phiên PKCE: đừng log, đừng lưu, đổi ngay.
  */
 export const exchangeOAuthCode = (oauthCode: string, codeVerifier: string): Promise<ZaloTokens> =>
-  call<ZaloTokens>('exchange', () => NativeZaloToolkit.exchangeOAuthCode(oauthCode, codeVerifier))
+  call<ZaloTokens>(ZaloErrorPhase.EXCHANGE, () => NativeZaloToolkit.exchangeOAuthCode(oauthCode, codeVerifier))
 
 /** Lấy access token mới từ refresh token do app tự lưu. */
 export const refreshTokens = (refreshToken: string): Promise<ZaloTokens> =>
-  call<ZaloTokens>('exchange', () => NativeZaloToolkit.refreshTokens(refreshToken))
+  call<ZaloTokens>(ZaloErrorPhase.EXCHANGE, () => NativeZaloToolkit.refreshTokens(refreshToken))
 
 /**
  * Hỏi xem refresh token còn dùng được không.
@@ -127,7 +126,7 @@ export const getProfile = (options: ZaloProfileOptions = {}): Promise<ZaloProfil
   const payload: { accessToken?: string; fields?: string[] } = {}
   if (options.accessToken !== undefined) payload.accessToken = options.accessToken
   if (options.fields !== undefined) payload.fields = options.fields
-  return call<ZaloProfile>('profile', () => NativeZaloToolkit.getProfile(JSON.stringify(payload)))
+  return call<ZaloProfile>(ZaloErrorPhase.PROFILE, () => NativeZaloToolkit.getProfile(JSON.stringify(payload)))
 }
 
 /**
@@ -142,7 +141,7 @@ export const getProfile = (options: ZaloProfileOptions = {}): Promise<ZaloProfil
  * Đây là hàm chẩn đoán - hãy bọc `if (__DEV__)`, đừng gọi trong luồng runtime bản phát hành.
  */
 export const verifyInstallation = (): Promise<ZaloInstallReport> =>
-  call<ZaloInstallReport>('config', () => NativeZaloToolkit.verifyInstallation())
+  call<ZaloInstallReport>(ZaloErrorPhase.CONFIG, () => NativeZaloToolkit.verifyInstallation())
 
 /**
  * Android: `base64(SHA-1(chứng chỉ ký))` - đúng giá trị SDK gửi lên Zalo, dán thẳng lên
@@ -159,7 +158,7 @@ export const getApplicationHashKey = async (): Promise<string | null> => {
 }
 
 export const getSdkVersion = (): Promise<ZaloSdkVersion> =>
-  call<ZaloSdkVersion>('config', () => NativeZaloToolkit.getSdkVersion())
+  call<ZaloSdkVersion>(ZaloErrorPhase.CONFIG, () => NativeZaloToolkit.getSdkVersion())
 
 /**
  * Nghe sự kiện "đã có oauth code".
@@ -171,8 +170,8 @@ export const addListener = (
   event: ZaloEventName,
   listener: ZaloEventListener,
 ): ZaloSubscription => {
-  if (event !== 'oauthCodeReceived') {
-    throw new ZaloError('UNKNOWN', `rn-zalo-toolkit: sự kiện không tồn tại "${String(event)}"`, {
+  if (event !== ZaloEventName.OAUTH_CODE_RECEIVED) {
+    throw new ZaloError(ZaloErrorCode.UNKNOWN, `rn-zalo-toolkit: sự kiện không tồn tại "${String(event)}"`, {
       phase: 'config',
     })
   }

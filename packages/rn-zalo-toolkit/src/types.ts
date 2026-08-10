@@ -8,7 +8,21 @@
  */
 
 /** Cách mở màn đăng nhập Zalo. */
-export type ZaloLoginVia = 'app' | 'web' | 'app_or_web'
+export const ZaloLoginVia = {
+  APP: 'app',
+  WEB: 'web',
+  APP_OR_WEB: 'app_or_web',
+} as const
+
+export type ZaloLoginVia = (typeof ZaloLoginVia)[keyof typeof ZaloLoginVia]
+
+/** Ai đổi `oauthCode` lấy token: máy của user, hay backend của bạn. */
+export const ZaloExchangeMode = {
+  DEVICE: 'device',
+  NONE: 'none',
+} as const
+
+export type ZaloExchangeMode = (typeof ZaloExchangeMode)[keyof typeof ZaloExchangeMode]
 
 /**
  * Kênh đăng nhập Zalo trả về.
@@ -16,7 +30,16 @@ export type ZaloLoginVia = 'app' | 'web' | 'app_or_web'
  * v0.1 chỉ làm login Zalo nên trên thực tế luôn là `'zalo'`. Field được giữ vì cả hai
  * SDK đều trả nó và nó hữu ích khi debug - ĐỪNG xây logic phân nhánh dựa vào nó.
  */
-export type ZaloChannel = 'zalo' | 'guest' | 'facebook' | 'google' | 'zingme' | 'unknown'
+export const ZaloChannel = {
+  ZALO: 'zalo',
+  GUEST: 'guest',
+  FACEBOOK: 'facebook',
+  GOOGLE: 'google',
+  ZINGME: 'zingme',
+  UNKNOWN: 'unknown',
+} as const
+
+export type ZaloChannel = (typeof ZaloChannel)[keyof typeof ZaloChannel]
 
 export interface ZaloLoginOptions {
   /** Mặc định `'app_or_web'`. */
@@ -54,7 +77,7 @@ export interface ZaloLoginOptions {
    * `graph.zalo.me/me`. Option này tồn tại để giữ hình dạng cho đường lui, không phải
    * để dùng ngay.
    */
-  exchange?: 'device' | 'none'
+  exchange?: ZaloExchangeMode
 }
 
 /**
@@ -65,7 +88,7 @@ export interface ZaloLoginOptions {
  */
 export type ZaloLoginResult =
   | {
-      exchange: 'device'
+      exchange: typeof ZaloExchangeMode.DEVICE
       oauthCode: string
       accessToken: string
       /** Chỉ có khi bật `includeRefreshToken`. */
@@ -76,7 +99,7 @@ export type ZaloLoginResult =
       isNewUser: boolean
     }
   | {
-      exchange: 'none'
+      exchange: typeof ZaloExchangeMode.NONE
       oauthCode: string
       codeVerifier: string
       channel: ZaloChannel
@@ -94,7 +117,7 @@ export interface ZaloProfile {
   id: string
   name: string | null
   /**
-   * ĐÃ LÀM PHẲNG so với `react-native-zalo-kit` (trả `picture.data.url`).
+   * Đã làm phẳng: Zalo trả về `picture.data.url`, ở đây là `picture.url`.
    * `picture.data.url` là hình dạng Facebook Graph mà Zalo sao chép lại.
    * App nào cần hình dạng cũ thì map ở lớp đệm của mình.
    */
@@ -125,17 +148,28 @@ export interface ZaloProfileOptions {
   fields?: string[]
 }
 
+export const ZaloInstallIssueCode = {
+  MISSING_APP_ID: 'MISSING_APP_ID',
+  URL_SCHEME_MISSING: 'URL_SCHEME_MISSING',
+  QUERIES_SCHEMES_MISSING: 'QUERIES_SCHEMES_MISSING',
+  BROWSER_ACTIVITY_MISSING: 'BROWSER_ACTIVITY_MISSING',
+  SDK_NOT_INITIALIZED: 'SDK_NOT_INITIALIZED',
+  URL_HANDLER_NOT_WIRED: 'URL_HANDLER_NOT_WIRED',
+} as const
+
 export type ZaloInstallIssueCode =
-  | 'MISSING_APP_ID'
-  | 'URL_SCHEME_MISSING'
-  | 'QUERIES_SCHEMES_MISSING'
-  | 'BROWSER_ACTIVITY_MISSING'
-  | 'SDK_NOT_INITIALIZED'
-  | 'URL_HANDLER_NOT_WIRED'
+  (typeof ZaloInstallIssueCode)[keyof typeof ZaloInstallIssueCode]
+
+export const ZaloIssueSeverity = {
+  ERROR: 'error',
+  WARN: 'warn',
+} as const
+
+export type ZaloIssueSeverity = (typeof ZaloIssueSeverity)[keyof typeof ZaloIssueSeverity]
 
 export interface ZaloInstallIssue {
   code: ZaloInstallIssueCode
-  severity: 'error' | 'warn'
+  severity: ZaloIssueSeverity
   /** Tiếng Việt, mô tả HIỆN TƯỢNG sẽ gặp nếu bỏ qua - không phải mô tả kỹ thuật. */
   message: string
   /** Đoạn config cần dán vào đâu. */
@@ -144,7 +178,7 @@ export interface ZaloInstallIssue {
 
 export interface ZaloInstallReport {
   ok: boolean
-  platform: 'ios' | 'android'
+  platform: ZaloPlatform
   appId: string | null
   nativeSdkVersion: string
   issues: ZaloInstallIssue[]
@@ -175,7 +209,19 @@ export interface ZaloSdkVersion {
   native: string
 }
 
-export type ZaloEventName = 'oauthCodeReceived'
+/** Nền tảng mà báo cáo chẩn đoán được sinh ra. */
+export const ZaloPlatform = {
+  IOS: 'ios',
+  ANDROID: 'android',
+} as const
+
+export type ZaloPlatform = (typeof ZaloPlatform)[keyof typeof ZaloPlatform]
+
+export const ZaloEventName = {
+  OAUTH_CODE_RECEIVED: 'oauthCodeReceived',
+} as const
+
+export type ZaloEventName = (typeof ZaloEventName)[keyof typeof ZaloEventName]
 
 /** Định danh lần `login()` sinh ra sự kiện - để app tự ghép nếu cần. */
 export interface ZaloEventPayload {

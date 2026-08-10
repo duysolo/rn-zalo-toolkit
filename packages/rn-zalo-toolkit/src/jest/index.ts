@@ -12,11 +12,11 @@
  * không bao giờ reject - để test đi qua đúng nhánh mà máy thật sẽ đi.
  */
 
-import { ZaloError } from '../errors'
-import type { ZaloErrorCode, ZaloErrorDetails } from '../errors'
+import { ZaloError, ZaloErrorCode } from '../errors'
+import type { ZaloErrorDetails } from '../errors'
+import { ZaloChannel, ZaloEventName, ZaloExchangeMode, ZaloPlatform } from '../types'
 import type {
   ZaloEventListener,
-  ZaloEventName,
   ZaloInstallReport,
   ZaloLoginOptions,
   ZaloLoginResult,
@@ -33,17 +33,17 @@ export {
   zaloErrorFrom,
   zaloErrorCodes,
   isZaloErrorCode,
-  type ZaloErrorCode,
+  ZaloErrorCode,
   type ZaloErrorDetails,
-  type ZaloErrorPhase,
+  ZaloErrorPhase,
 } from '../errors'
 
 const DEFAULT_LOGIN: ZaloLoginResult = {
-  exchange: 'device',
+  exchange: ZaloExchangeMode.DEVICE,
   oauthCode: 'mock-oauth-code',
   accessToken: 'mock-access-token',
   expiresAt: 4102444800000, // 2100-01-01, cố định để test không phụ thuộc đồng hồ
-  channel: 'zalo',
+  channel: ZaloChannel.ZALO,
   isNewUser: false,
 }
 
@@ -88,7 +88,7 @@ const freshState = (): MockState => ({
   refreshTokenValid: true,
   installReport: {
     ok: true,
-    platform: 'android',
+    platform: ZaloPlatform.ANDROID,
     appId: '0000000000000000000',
     nativeSdkVersion: 'mock',
     issues: [],
@@ -128,7 +128,7 @@ export const __setLoginResult = (result: Partial<ZaloLoginResult>): void => {
   // `accessToken`/`expiresAt`. Trộn thẳng với DEFAULT_LOGIN sẽ đẻ ra một hình dạng mà native
   // không bao giờ trả về - và test của app sẽ xanh cho một nhánh code chết. Mock mà dựng
   // được trạng thái bất khả thi thì tệ hơn không có mock.
-  if (merged.exchange === 'none' && !('accessToken' in result)) {
+  if (merged.exchange === ZaloExchangeMode.NONE && !('accessToken' in result)) {
     delete (merged as { accessToken?: string }).accessToken
     delete (merged as { expiresAt?: number }).expiresAt
     delete (merged as { refreshToken?: string }).refreshToken
@@ -233,8 +233,8 @@ export const addListener = (
   event: ZaloEventName,
   listener: ZaloEventListener,
 ): ZaloSubscription => {
-  if (event !== 'oauthCodeReceived') {
-    throw new ZaloError('UNKNOWN', `rn-zalo-toolkit: sự kiện không tồn tại "${String(event)}"`, {
+  if (event !== ZaloEventName.OAUTH_CODE_RECEIVED) {
+    throw new ZaloError(ZaloErrorCode.UNKNOWN, `rn-zalo-toolkit: sự kiện không tồn tại "${String(event)}"`, {
       phase: 'config',
     })
   }

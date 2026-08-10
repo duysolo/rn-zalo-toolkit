@@ -6,42 +6,44 @@
  */
 
 /**
- * Tập mã lỗi HỮU HẠN. Người gọi `switch` trên nó được và trình biên dịch kiểm tra đủ nhánh.
+ * Tập error code hữu hạn. `switch` trên nó được TypeScript kiểm tra đủ nhánh.
  *
- * `CANCELLED` là GIÁ TRỊ BÌNH THƯỜNG, không phải sự cố - user bấm huỷ thì rơi vào đây.
+ * Khai bằng object `as const` chứ không dùng `enum` của TypeScript: React Native transpile
+ * bằng Babel, nơi `const enum` không chạy được, còn `enum` thường thì sinh code runtime và
+ * vi phạm `erasableSyntaxOnly`. Cách này cho autocomplete y hệt enum
+ * (`ZaloErrorCode.CANCELLED`) mà vẫn nhận string literal, nên `'CANCELLED'` viết tay vẫn hợp lệ.
+ *
+ * `CANCELLED` là giá trị bình thường chứ không phải sự cố - user bấm huỷ thì rơi vào đây.
  */
-export type ZaloErrorCode =
-  | 'CANCELLED'
-  | 'LOGIN_IN_PROGRESS'
-  | 'ZALO_NOT_INSTALLED'
-  | 'ZALO_OUT_OF_DATE'
-  | 'INVALID_CONFIG'
-  | 'NOT_WIRED'
-  | 'NETWORK'
-  | 'TIMEOUT'
-  | 'TOKEN_EXCHANGE_FAILED'
-  | 'INVALID_TOKEN'
-  | 'PROFILE_RESTRICTED'
-  | 'RATE_LIMITED'
-  | 'UNKNOWN'
+export const ZaloErrorCode = {
+  CANCELLED: 'CANCELLED',
+  LOGIN_IN_PROGRESS: 'LOGIN_IN_PROGRESS',
+  ZALO_NOT_INSTALLED: 'ZALO_NOT_INSTALLED',
+  ZALO_OUT_OF_DATE: 'ZALO_OUT_OF_DATE',
+  INVALID_CONFIG: 'INVALID_CONFIG',
+  NOT_WIRED: 'NOT_WIRED',
+  NETWORK: 'NETWORK',
+  TIMEOUT: 'TIMEOUT',
+  TOKEN_EXCHANGE_FAILED: 'TOKEN_EXCHANGE_FAILED',
+  INVALID_TOKEN: 'INVALID_TOKEN',
+  PROFILE_RESTRICTED: 'PROFILE_RESTRICTED',
+  RATE_LIMITED: 'RATE_LIMITED',
+  UNKNOWN: 'UNKNOWN',
+} as const
 
-export type ZaloErrorPhase = 'config' | 'authorize' | 'exchange' | 'profile'
+export type ZaloErrorCode = (typeof ZaloErrorCode)[keyof typeof ZaloErrorCode]
 
-const ALL_CODES: readonly ZaloErrorCode[] = [
-  'CANCELLED',
-  'LOGIN_IN_PROGRESS',
-  'ZALO_NOT_INSTALLED',
-  'ZALO_OUT_OF_DATE',
-  'INVALID_CONFIG',
-  'NOT_WIRED',
-  'NETWORK',
-  'TIMEOUT',
-  'TOKEN_EXCHANGE_FAILED',
-  'INVALID_TOKEN',
-  'PROFILE_RESTRICTED',
-  'RATE_LIMITED',
-  'UNKNOWN',
-]
+/** Giai đoạn phát sinh lỗi, giúp phân biệt "chưa đăng nhập được" với "đăng nhập rồi nhưng...". */
+export const ZaloErrorPhase = {
+  CONFIG: 'config',
+  AUTHORIZE: 'authorize',
+  EXCHANGE: 'exchange',
+  PROFILE: 'profile',
+} as const
+
+export type ZaloErrorPhase = (typeof ZaloErrorPhase)[keyof typeof ZaloErrorPhase]
+
+const ALL_CODES: readonly ZaloErrorCode[] = Object.values(ZaloErrorCode)
 
 const CODE_SET = new Set<string>(ALL_CODES)
 

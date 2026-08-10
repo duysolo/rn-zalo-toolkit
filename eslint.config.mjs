@@ -25,6 +25,13 @@ export default [
     rules: {
       ...tseslint.configs.recommended.rules,
       '@typescript-eslint/no-explicit-any': 'error',
+      // Mẫu `export const X = {...} as const` + `export type X = ...` cho ta enum mà không
+      // phải dùng `enum` của TypeScript (Babel của RN không chạy được `const enum`, còn
+      // `enum` thường thì sinh code runtime). Value và type nằm ở hai declaration space khác
+      // nhau nên đây là code hợp lệ, nhưng cả rule base lẫn bản TS-aware đều không có option
+      // để chấp nhận. Tắt được vì `tsc` mới là thứ bắt redeclare thật, và nó chạy trong CI.
+      'no-redeclare': 'off',
+      '@typescript-eslint/no-redeclare': 'off',
       // Tham số tiền tố `_` là quy ước "cố ý không dùng" - vẫn phải khai để giữ đúng chữ ký
       // của hợp đồng (bản mock phải trùng chữ ký bản thật thì test mới có giá trị).
       '@typescript-eslint/no-unused-vars': [

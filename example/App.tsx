@@ -18,6 +18,9 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import {
   ZaloError,
+  ZaloErrorCode,
+  ZaloEventName,
+  ZaloLoginVia,
   addListener,
   getApplicationHashKey,
   getProfile,
@@ -75,9 +78,8 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    // Sự kiện này CHỈ để đổi nhãn loading. API vẫn đúng khi không ai nghe - nó không phải
-    // cơ chế phát hiện huỷ như bản vá cũ của react-native-zalo-kit.
-    const subscription = addListener('oauthCodeReceived', () => {
+    // Sự kiện này chỉ để đổi nhãn loading. API vẫn hoạt động đúng khi không ai listen.
+    const subscription = addListener(ZaloEventName.OAUTH_CODE_RECEIVED, () => {
       append('đã có oauth code - đang đổi lấy token...', 'info')
     })
     return () => subscription.remove()
@@ -99,7 +101,7 @@ export default function App(): React.JSX.Element {
         const elapsed = Date.now() - startedAt
         if (ZaloError.is(error)) {
           // Huỷ là kết quả BÌNH THƯỜNG, không phải sự cố.
-          const tone = error.code === 'CANCELLED' ? 'warn' : 'err'
+          const tone = error.code === ZaloErrorCode.CANCELLED ? 'warn' : 'err'
           append(
             `${tone === 'warn' ? '⊘' : '✖'} ${label} (${elapsed}ms)\n` +
               `code=${error.code} phase=${error.phase} native=${error.nativeCode ?? '-'}\n` +
@@ -122,16 +124,16 @@ export default function App(): React.JSX.Element {
     () => [
       {
         label: 'Đăng nhập (app hoặc web)',
-        run: () => run('login app_or_web', () => login({ via: 'app_or_web' })),
+        run: () => run('login app_or_web', () => login({ via: ZaloLoginVia.APP_OR_WEB })),
       },
       {
         label: 'Đăng nhập qua ứng dụng Zalo',
         hint: 'Chưa cài Zalo → phải ra ZALO_NOT_INSTALLED, KHÔNG được treo',
-        run: () => run('login app', () => login({ via: 'app' })),
+        run: () => run('login app', () => login({ via: ZaloLoginVia.APP })),
       },
       {
         label: 'Đăng nhập qua web',
-        run: () => run('login web', () => login({ via: 'web' })),
+        run: () => run('login web', () => login({ via: ZaloLoginVia.WEB })),
       },
       {
         label: 'Hết giờ sau 5 giây',

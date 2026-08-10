@@ -235,7 +235,7 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
     isNewUser: Boolean,
     includeRefresh: Boolean,
   ) {
-    // Nhánh lỗi ở đây từng bị NUỐT HOÀN TOÀN trong thư viện cũ (err != 0 không resolve cũng
+    // Nhánh lỗi ở đây rất dễ bị bỏ quên (err != 0 mà không resolve cũng
     // không reject) → promise treo vĩnh viễn → JS diễn giải nhầm thành "người dùng huỷ".
     if (data == null) {
       gate.reject(ErrorMapping.simple(ZaloErrorCode.TOKEN_EXCHANGE_FAILED, ZaloErrorPhase.exchange))

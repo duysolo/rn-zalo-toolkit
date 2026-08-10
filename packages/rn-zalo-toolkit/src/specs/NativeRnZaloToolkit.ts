@@ -56,7 +56,7 @@ export interface Spec extends TurboModule {
    * qua mạng. Chỉ để UI đổi nhãn loading.
    *
    * API vẫn ĐÚNG khi không ai nghe event này - nó không phải cơ chế phát hiện cancel như
-   * bản vá cũ của `react-native-zalo-kit`. `attemptId` để bỏ event lạc của lần login đã
+   * cơ chế phát hiện cancel. `attemptId` để bỏ event lạc của lần login đã
    * hết giờ.
    */
   readonly onOauthCodeReceived: EventEmitter<{ attemptId: string }>
