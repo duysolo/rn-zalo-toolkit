@@ -10,7 +10,7 @@
  *
  * Dùng:
  *   npx rn-zalo-toolkit-doctor            # dò từ thư mục hiện tại
- *   node scripts/doctor.mjs <đường-dẫn-app>
+ *   npx rn-zalo-toolkit-doctor <đường-dẫn-app>
  */
 
 import fs from 'node:fs'
@@ -244,7 +244,7 @@ const appRoot = findAppRoot(target)
 if (!appRoot) {
   console.error(
     `[doctor] Không tìm thấy thư mục app React Native từ "${target}".\n` +
-      'Chạy trong thư mục app, hoặc truyền đường dẫn: node scripts/doctor.mjs <app>',
+      'Chạy trong thư mục app, hoặc truyền đường dẫn: npx rn-zalo-toolkit-doctor <app>',
   )
   process.exit(2)
 }

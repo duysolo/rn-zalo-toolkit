@@ -1,6 +1,6 @@
 {
   "name": "rn-zalo-toolkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Zalo authentication for React Native. Wraps the official Android and iOS SDKs, resolves the iOS SDK through Swift Package Manager instead of CocoaPods, and guarantees every call settles.",
   "main": "./dist/commonjs/index.js",
   "module": "./dist/module/index.js",
