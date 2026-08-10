@@ -1,31 +1,19 @@
 # Xử lý sự cố
 
-Chạy cái này trước, nó đọc file config chứ không suy đoán:
+Trước khi tra bảng dưới, chạy lệnh này. Nó đọc file cấu hình của app và chỉ ra chỗ thiếu:
 
 ```sh
 npx rn-zalo-toolkit-doctor
 ```
 
-## Đăng nhập treo, không có error nào
+## Lỗi `INVALID_CONFIG` khi đăng nhập
 
-Mọi entry point native đều settle và đều có timeout, nên trường hợp này không nên xảy ra nữa.
-Nếu vẫn gặp:
-
-1. Có thấy `TIMEOUT` sau `timeoutMs` không? Nếu có thì không phải treo, mà là SDK thật sự không
-   phản hồi. Kiểm tra network, và kiểm tra xem user có bị kẹt ở màn hình Zalo không.
-2. Trên iOS, đã forward `ZaloToolkit.handle(...)` chưa? Với `via: 'app'` mà thiếu bước này thì
-   Zalo không gọi ngược về được, và bạn sẽ nhận `NOT_WIRED` khi hết timeout.
-3. Nếu treo lâu hơn cả `timeoutMs` trên iOS: timer là `DispatchQueue.main.asyncAfter` nên không
-   chạy khi app bị suspend. Giữ thêm một `withTimeout` ở JS với giá trị lớn hơn.
-
-## `INVALID_CONFIG` khi đăng nhập
-
-Error này đã kèm sẵn thứ bạn cần:
+Nghĩa là Zalo chưa nhận ra app của bạn. Lỗi này mang sẵn thông tin cần thiết:
 
 ```ts
 catch (error) {
   if (ZaloError.is(error, ZaloErrorCode.INVALID_CONFIG)) {
-    console.log(error.signatureHashKey)  // dán lên portal
+    console.log(error.signatureHashKey)  // dán lên Zalo portal
     console.log(error.packageName)
     console.log(error.bundleId)
     console.log(error.nativeCode)
@@ -33,66 +21,37 @@ catch (error) {
 }
 ```
 
-Ba nguyên nhân, xếp theo tần suất:
+Ba nguyên nhân, xếp theo thứ tự hay gặp:
 
-1. **Hash key chưa đăng ký** (`nativeCode: -5008`). Mỗi loại build ký bằng key khác nhau. Bản từ
-   Play Store dùng App Signing key của Google chứ không phải upload key, lấy SHA-1 ở Play Console
-   → Test and release → App integrity → **App signing key certificate**.
-2. **Package name hoặc bundle ID chưa đăng ký** (`-5006` / `-5005`).
-3. **App trên portal chưa duyệt hoặc đang bị tắt** (`-7004`).
+1. **Hash key chưa đăng ký** (`nativeCode` là `-5008`). Xem [setup Android](./guides/setup-android.md#hash-key---nguyên-nhân-lỗi-phổ-biến-nhất).
+2. **Package name hoặc bundle ID chưa đăng ký** (`-5006` hoặc `-5005`).
+3. **App trên portal chưa được duyệt hoặc đang tắt** (`-7004`).
 
-## Hộp thoại "Bản Zalo không tương thích"
+## Hiện hộp thoại "Bản Zalo không tương thích"
 
-Thông báo này gây hiểu nhầm vì nó xuất hiện ở hai nguyên nhân khác hẳn nhau:
+Thông báo này gây hiểu nhầm, nó xuất hiện ở hai trường hợp khác nhau:
 
-1. Hash key sai. Phổ biến hơn nhiều, kiểm tra trước.
-2. App Zalo trên máy thật sự quá cũ.
+- Hash key chưa đúng - hay gặp hơn nhiều, kiểm tra trước.
+- App Zalo trên máy thật sự quá cũ.
 
-Cách phân biệt: gọi `login()` rồi xem error code. `INVALID_CONFIG` là nguyên nhân 1,
-`ZALO_OUT_OF_DATE` là nguyên nhân 2.
+Cách phân biệt: xem `error.code`. `INVALID_CONFIG` là trường hợp thứ nhất, `ZALO_OUT_OF_DATE` là
+trường hợp thứ hai.
 
-## `PROFILE_RESTRICTED` khi lấy profile
+## Lỗi `PROFILE_RESTRICTED` khi gọi `getProfile()`
 
-Zalo chặn `graph.zalo.me` theo IP nguồn, nên thiết bị ngoài Việt Nam luôn gặp.
+Zalo chỉ trả profile cho IP ở Việt Nam, nên thiết bị ở nước ngoài luôn gặp lỗi này.
 
-Đây là hành vi bình thường chứ không phải lỗi config. Đừng để nó làm hỏng luồng đăng nhập: token
-đã lấy được rồi, và backend chạy IP Việt Nam sẽ lấy được đúng profile đó.
+Đây là hành vi bình thường, không phải lỗi cấu hình. Đừng để nó làm hỏng luồng đăng nhập - token
+đã lấy được rồi, backend sẽ lấy profile giúp bạn.
 
-## Android: `Could not find me.zalo:sdk-auth`
+## Lỗi `NOT_WIRED` trên iOS
 
-Thư viện tự thêm Maven repo của Zalo vào app. Gặp lỗi này nghĩa là phần đó bị chặn. Kiểm tra:
+App chưa chuyển URL callback cho thư viện. Làm
+[bước 2 của setup iOS](./guides/setup-ios.md#bước-2---nhận-url-callback).
 
-- App có đặt `ext.rnZaloToolkitSkipRepoInjection = true` không.
-- `settings.gradle` có bật `RepositoriesMode.FAIL_ON_PROJECT_REPOS` không.
+## Đăng nhập được khi app đang mở, nhưng hỏng khi mở app từ đầu (iOS)
 
-Cách khai thủ công có ở [setup-android](./guides/setup-android.md#tự-quản-maven-repo).
-
-## Android: `Attribute meta-data#com.zing.zalo.zalosdk.appID@value ... tools:replace`
-
-App còn tự khai `meta-data` đó trong khi thư viện cũng khai. Xoá khối của app đi.
-
-Đừng thêm `tools:replace` để dập lỗi, vì làm vậy là ghi đè lên giá trị mà thư viện sinh ra từ
-`zaloAppId`.
-
-## Android: build release chết vì `ClassNotFoundException`
-
-Chỉ xảy ra khi bật minify. SDK Zalo load class của nó bằng reflection theo tên nên R8 đổi tên là
-hỏng. Thư viện đã ship `consumer-rules.pro`; nếu vẫn gặp thì kiểm tra xem app có rule nào loại
-trừ `com.zing.zalo.**` không.
-
-Luôn test bản release có minify trước khi phát hành, vì lỗi loại này không bao giờ lộ ra ở build
-debug.
-
-## iOS: `pod install` hỏng
-
-Thư viện không khai dependency CocoaPods nào lên SDK Zalo, và không có khối `raise` kiểu
-`$RNFirebaseDisableSPM`. Nếu `pod install` hỏng với thông báo nhắc tới Firebase thì đó là pod
-khác, không phải pod này.
-
-## iOS: app dùng SceneDelegate, đăng nhập hỏng khi mở từ trạng thái tắt hẳn
-
-Cần `ZaloToolkit.handle(...)` ở cả hai chỗ. Thiếu chỗ thứ hai thì chỉ cold start hỏng còn app
-đang chạy vẫn ổn, nên rất dễ bỏ sót:
+App bạn dùng SceneDelegate và thiếu `ZaloToolkit.handle` trong `scene(_:willConnectTo:options:)`:
 
 ```swift
 func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
@@ -101,30 +60,70 @@ func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
 }
 ```
 
-## User bấm Huỷ mà app bung alert lỗi
+## Đăng nhập treo, không thấy lỗi gì
 
-Service layer của app đang coi mọi rejection là lỗi. `CANCELLED` là kết quả bình thường, bắt
-riêng và return sớm:
+Thư viện có timeout nên trường hợp này không nên xảy ra. Nếu vẫn gặp:
+
+- Chờ hết `timeoutMs` (mặc định 2 phút) xem có ra `TIMEOUT` không. Nếu có thì không phải treo, mà
+  là Zalo không phản hồi - kiểm tra mạng.
+- Trên iOS, kiểm tra đã làm bước 2 của setup chưa.
+- Nếu app bạn có thể bị hệ điều hành tạm dừng khi chạy nền, thêm một timeout ở phía JS làm lớp
+  bảo vệ cuối.
+
+## Android: build lỗi `Could not find me.zalo:sdk-auth`
+
+Thư viện tự thêm Maven repo của Zalo vào app, nhưng có hai thứ có thể chặn:
+
+- App đặt `ext.rnZaloToolkitSkipRepoInjection = true`.
+- `settings.gradle` bật `RepositoriesMode.FAIL_ON_PROJECT_REPOS`.
+
+Nếu bạn muốn tự quản repo, khai thủ công trong `android/build.gradle` của app:
+
+```gradle
+ext { rnZaloToolkitSkipRepoInjection = true }
+
+allprojects {
+  repositories {
+    maven {
+      url "https://gitlab.com/api/v4/projects/50747855/packages/maven"
+      content { includeGroup "me.zalo" }
+    }
+  }
+}
+```
+
+## Android: build lỗi manifest, nhắc `tools:replace` và `com.zing.zalo.zalosdk.appID`
+
+App bạn đang tự khai `meta-data` app id trong `AndroidManifest.xml`, trùng với thư viện. Xoá khối
+đó của app đi.
+
+Đừng thêm `tools:replace` để dập lỗi, vì làm vậy là ghi đè lên giá trị thư viện sinh từ
+`zaloAppId`.
+
+## Android: bản release bị crash `ClassNotFoundException`
+
+Chỉ xảy ra khi bật minify. Thư viện đã kèm proguard rule cần thiết, nên nếu vẫn gặp thì kiểm tra
+xem app có rule nào loại trừ `com.zing.zalo.**` không.
+
+## iOS: `pod install` báo lỗi
+
+Thư viện không phụ thuộc pod nào của Zalo. Nếu thông báo lỗi nhắc tới Firebase hay pod khác thì
+nguyên nhân nằm ở đó, không phải ở đây.
+
+## User bấm huỷ mà app hiện alert lỗi
+
+Code của bạn đang coi mọi lỗi là như nhau. Bắt riêng `CANCELLED`:
 
 ```ts
 if (ZaloError.is(error, ZaloErrorCode.CANCELLED)) return
 ```
 
-## jest: `SyntaxError: Unexpected token 'export'`
+## jest báo `SyntaxError: Unexpected token 'export'`
 
-Thêm `rn-zalo-toolkit` vào `transformIgnorePatterns`, hoặc dùng mock ship sẵn:
+Dùng mock có sẵn:
 
 ```ts
 jest.mock('rn-zalo-toolkit', () => require('rn-zalo-toolkit/jest'))
 ```
 
-## Nghiệm thu trước khi phát hành
-
-Kết quả chạy trên máy thật ghi vào `docs/acceptance/<YYYY-MM-DD>-<version>.md`, một file cho mỗi
-lần chạy, không ghi đè. Template ở [`docs/acceptance/TEMPLATE.md`](./acceptance/TEMPLATE.md).
-
-Ba trạng thái: `PASS`, `FAIL`, `CHƯA CHẠY`. Cột thời gian settle là bắt buộc, vì đó là dữ liệu so
-sánh được giữa hai lần chạy và là thứ chứng minh không có promise nào treo.
-
-Chạy lại nhóm smoke khi: nâng version SDK Zalo, nâng React Native major/minor, hoặc có thay đổi
-chạm vào `android/` hay `ios/`.
+Hoặc thêm `rn-zalo-toolkit` vào `transformIgnorePatterns`.

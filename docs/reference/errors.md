@@ -1,91 +1,81 @@
-# Error code
+# Mã lỗi
 
-Mọi hàm reject bằng một loại duy nhất là `ZaloError`. Tập error code hữu hạn nên `switch` trên nó
-được TypeScript kiểm tra đủ nhánh.
+Mọi hàm khi lỗi đều reject bằng `ZaloError`. Bạn kiểm tra bằng `code` chứ không phải đọc message:
 
 ```ts
 import { ZaloError, ZaloErrorCode } from 'rn-zalo-toolkit'
 
-catch (error) {
+try {
+  await login()
+} catch (error) {
   if (ZaloError.is(error, ZaloErrorCode.CANCELLED)) return
 
   if (ZaloError.is(error)) {
-    error.code             // ZaloErrorCode
-    error.phase            // ZaloErrorPhase
-    error.nativeCode       // code gốc của SDK Zalo, để tra tài liệu
-    error.nativeMessage
-    error.signatureHashKey // chỉ có ở INVALID_CONFIG trên Android
-    error.packageName
-    error.bundleId
+    error.code      // mã lỗi, xem bảng dưới
+    error.message   // câu tiếng Việt, hiện được cho user
+    error.phase     // lỗi xảy ra ở bước nào
   }
 }
 ```
 
-Cột Code bên dưới vừa là giá trị chuỗi vừa là thành viên của enum `ZaloErrorCode`, ví dụ
-`ZaloErrorCode.CANCELLED`. Hai cách viết dùng lẫn được.
+## Bảng mã lỗi
 
-## Tập error code
-
-| Code | Nghĩa | Nên làm gì |
+| Mã | Nghĩa | Nên làm gì |
 |---|---|---|
-| `CANCELLED` | User huỷ, đóng webview, bấm back, hoặc từ chối cấp quyền | Bỏ qua im lặng. Đây là kết quả bình thường |
-| `LOGIN_IN_PROGRESS` | Đã có một `login()` đang chạy | Disable nút, đừng gọi chồng |
+| `CANCELLED` | User bấm huỷ, đóng màn đăng nhập, hoặc từ chối cấp quyền | Bỏ qua, đây không phải lỗi |
+| `LOGIN_IN_PROGRESS` | Đang có một `login()` chạy dở | Vô hiệu hoá nút để tránh bấm hai lần |
 | `ZALO_NOT_INSTALLED` | Máy chưa cài app Zalo | Gợi ý cài, hoặc gọi lại với `via: 'web'` |
 | `ZALO_OUT_OF_DATE` | App Zalo trên máy quá cũ | Gợi ý cập nhật, hoặc `via: 'web'` |
-| `INVALID_CONFIG` | App id / package / bundle ID / hash key sai hoặc chưa đăng ký portal | Đọc `signatureHashKey` + `packageName` trong error rồi dán lên portal |
-| `NOT_WIRED` | iOS: app chưa forward URL callback | Thêm `ZaloToolkit.handle(...)`, xem setup-ios |
-| `NETWORK` | Không kết nối được server Zalo | Cho retry |
-| `TIMEOUT` | Quá `timeoutMs` (mặc định 120s) | Cho retry |
-| `TOKEN_EXCHANGE_FAILED` | Có oauth code nhưng đổi lấy token thất bại | Cho retry; lặp lại thì kiểm tra network hoặc tài khoản |
-| `INVALID_TOKEN` | Token hỏng hoặc hết hạn | Đăng nhập lại |
-| `PROFILE_RESTRICTED` | Zalo chặn thông tin cá nhân với IP ngoài Việt Nam | Đừng để hỏng luồng đăng nhập, để backend lấy profile |
-| `RATE_LIMITED` | Zalo giới hạn tần suất | Chờ rồi retry |
-| `UNKNOWN` | Ngoài các nhánh trên | Log `nativeCode` + `nativeMessage` |
+| `INVALID_CONFIG` | App id, package name, bundle ID hoặc hash key chưa đúng | Xem [xử lý sự cố](../troubleshooting.md) |
+| `NOT_WIRED` | iOS chưa chuyển URL callback cho thư viện | Làm bước 2 của [setup iOS](../guides/setup-ios.md) |
+| `NETWORK` | Không kết nối được Zalo | Cho thử lại |
+| `TIMEOUT` | Quá lâu không có kết quả | Cho thử lại |
+| `TOKEN_EXCHANGE_FAILED` | Đăng nhập xong nhưng đổi token thất bại | Cho thử lại |
+| `INVALID_TOKEN` | Token hết hạn hoặc không hợp lệ | Đăng nhập lại |
+| `PROFILE_RESTRICTED` | Zalo không trả profile cho IP ngoài Việt Nam | Đừng để hỏng luồng đăng nhập, để backend lấy profile |
+| `RATE_LIMITED` | Gọi quá nhiều lần | Chờ rồi thử lại |
+| `UNKNOWN` | Trường hợp chưa phân loại | Log `error.nativeCode` và `error.nativeMessage` |
 
-## Cùng một số, hai nền tảng nghĩa khác nhau
+Tập mã này cố định, nên `switch (error.code)` sẽ được TypeScript nhắc nếu bạn thiếu nhánh.
 
-Đây là chỗ dễ sai nhất khi tự map error code, và là lý do thư viện giữ hai bảng riêng cho hai nền
-tảng:
+## Các trường trong `ZaloError`
 
-| Native code | Android | iOS |
-|---|---|---|
-| `-7014` | `ERR_ZALO_APP_NOT_INSTALLED` → `ZALO_NOT_INSTALLED` | `kZaloSDKErrorCodeAuthenticationFailed` → `UNKNOWN` |
-| `-7015` | `ERR_ZALO_OUT_OF_DATE` → `ZALO_OUT_OF_DATE` | `kZaloSDKErrorCodeAuthenticationExceeded` → `RATE_LIMITED` |
-
-Nếu gộp hai nền tảng vào một bảng thì user Android chưa cài Zalo sẽ nhận thông báo "xác thực thất
-bại", còn user iOS đang bị rate limit lại đi cập nhật app một cách vô ích.
-
-Trên iOS, "chưa cài" và "bản cũ" nằm ở hai code khác hẳn: `-7023` và `-7022`.
-
-## Single source of truth
-
-Bảng mapping nằm ở `src/errorTable.json`. Ba bộ test đọc chính file đó:
-
-| Bộ test | Kiểm tra |
+| Trường | |
 |---|---|
-| `src/__tests__/errorTable.test.ts` | union `ZaloErrorCode` phủ đúng bảng, không trùng lặp |
-| `android/src/test/kotlin/.../ErrorMappingTest.kt` | `ErrorMapping.kt` khớp mọi dòng Android |
-| `ios/Tests/ErrorMappingTests.swift` | `ErrorMapping.swift` khớp mọi dòng iOS |
+| `code` | Mã trong bảng trên |
+| `message` | Câu tiếng Việt, hiện được cho user |
+| `phase` | `'config'`, `'authorize'`, `'exchange'` hoặc `'profile'` |
+| `nativeCode` | Mã gốc từ SDK Zalo, dùng khi cần tra tài liệu Zalo |
+| `nativeMessage` | Thông báo gốc từ SDK Zalo |
+| `signatureHashKey` | Chỉ có ở `INVALID_CONFIG` trên Android - dán giá trị này lên portal |
+| `packageName` | Android |
+| `bundleId` | iOS |
 
-Thêm code mới mà quên một phía thì CI đỏ ngay, không phải chờ user thật gặp đúng code đó trên
-đúng nền tảng đó.
+## `CANCELLED` không phải lỗi
 
-## Tập code huỷ là tập mở
+User bấm huỷ là hành vi bình thường. Bắt riêng và return sớm, đừng hiện alert:
 
-Trên iOS, `-1001` không có trong `ZDKZaloError.h`, nhưng demo chính hãng của Zalo lại dùng chính
-nó làm mốc "không phải cancel". Nghĩa là header không phải nguồn đầy đủ. Nếu bạn gặp một code ra
-`UNKNOWN` mà thực tế là user huỷ, báo lại kèm `nativeCode` để bổ sung vào bảng.
+```ts
+if (ZaloError.is(error, ZaloErrorCode.CANCELLED)) return
+```
 
-## Quy tắc nội dung error
+## Đừng log cả object profile
 
-`message` và `nativeMessage` chỉ chứa: error code, mô tả của Zalo, và định danh config công khai
-(`appId`, `packageName`, `bundleId`, hash key).
+`ZaloProfile.raw` chứa thông tin cá nhân (tên, ngày sinh, giới tính, số điện thoại). Nếu app bạn
+đẩy log lên crash reporting thì những dữ liệu đó sẽ đi theo.
 
-Không bao giờ chứa `accessToken`, `refreshToken`, `oauthCode`, `codeVerifier`, hay bất kỳ field
-nào của `ZaloProfile`. Cả ba nền tảng đều có test canh điều này.
+Bản thân `ZaloError` thì an toàn: `message` và `nativeMessage` không bao giờ chứa token hay thông
+tin cá nhân, chỉ có mã lỗi và các giá trị cấu hình công khai.
 
-Lý do là `message` thường được app bung thẳng ra alert, và nhiều app persist mọi log ERROR xuống
-file hoặc đẩy lên crash reporting.
+## Cùng một mã, hai nền tảng nghĩa khác nhau
 
-Hệ quả cho bạn: đừng log nguyên `ZaloProfile`, vì `raw` là PII (tên, ngày sinh, giới tính, số
-điện thoại).
+Nếu bạn từng tự map mã lỗi của SDK Zalo thì để ý chỗ này. Cùng con số `-7014` và `-7015` nhưng
+Android và iOS hiểu khác hẳn nhau:
+
+| Mã gốc | Android | iOS |
+|---|---|---|
+| `-7014` | chưa cài Zalo | xác thực thất bại |
+| `-7015` | Zalo bản cũ | gọi quá nhiều lần |
+
+Thư viện giữ hai bảng riêng cho hai nền tảng nên bạn không phải lo. Nêu ra để bạn biết vì sao
+không nên tự dịch `nativeCode` thành thông báo cho user.

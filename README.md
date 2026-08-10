@@ -1,36 +1,15 @@
 # rn-zalo-toolkit
 
-Đăng nhập Zalo cho React Native. Bọc SDK chính hãng của Zalo trên Android và iOS, và lấy SDK iOS
-qua Swift Package Manager thay vì CocoaPods.
+Đăng nhập Zalo cho React Native, dùng SDK chính hãng của Zalo trên cả Android và iOS.
 
-Phạm vi: chỉ có auth. Không có share/feed/message, không đăng nhập qua Facebook/Apple/Google,
-không guest login.
+Trên iOS, SDK Zalo được lấy qua Swift Package Manager, không qua CocoaPods.
 
-## Điểm chính
+```ts
+import { login } from 'rn-zalo-toolkit'
 
-- **Promise luôn settle.** Mọi entry point native đều có timeout áp ở native, nên app không cần
-  theo dõi `AppState` để đoán user đã cancel hay chưa.
-- **Config sai thì build fail** kèm thông báo chỉ chỗ sửa. App chỉ khai app id, không phải đụng
-  `MainApplication`, `MainActivity` hay `AndroidManifest`.
-- **Một error model cho cả hai nền tảng.** Một class `ZaloError` với tập error code hữu hạn, nên
-  `switch` trên nó được TypeScript kiểm tra đủ nhánh.
-- Có sẵn jest mock và CLI `npx rn-zalo-toolkit-doctor` để kiểm tra config.
-
-## SDK iOS lấy qua SPM
-
-Zalo không phát hành SDK iOS qua Swift Package Manager, repo chính hãng chỉ có podspec. Nên thư
-viện tự bọc xcframework thành một Swift Package:
-
+const result = await login()
+await sendToBackend(result.oauthCode)
 ```
-ios/ZaloSDKBinary/Package.swift    → binaryTarget cho ZaloSDK + ZaloSDKCoreKit
-```
-
-Podspec của thư viện không khai `s.dependency` bên thứ ba nào, nên app không còn kéo SDK Zalo từ
-CocoaPods trunk.
-
-React Native 0.85 vẫn autolink native module qua CocoaPods nên podspec vẫn phải tồn tại, nhưng nó
-chỉ trỏ `vendored_frameworks` vào xcframework mà `Package.swift` mô tả. Khi React Native hỗ trợ
-autolink bằng SPM thì bỏ podspec đi được, không phải sửa dòng Swift nào.
 
 ## Cài đặt
 
@@ -38,27 +17,58 @@ autolink bằng SPM thì bỏ podspec đi được, không phải sửa dòng Sw
 npm install rn-zalo-toolkit
 ```
 
-**Android** - thêm một dòng vào `android/gradle.properties`:
+Cần React Native 0.85 trở lên (New Architecture).
+
+### Android
+
+Thêm app id vào `android/gradle.properties`:
 
 ```properties
-zaloAppId=1993903030729882479
+zaloAppId=1234567890123456789
 ```
 
-**iOS** - thêm `ZaloAppID`, URL scheme `zalo-<appId>` và `LSApplicationQueriesSchemes` vào
-`Info.plist`, rồi forward URL callback trong `AppDelegate`:
+Xong. Không cần sửa `MainApplication`, `MainActivity` hay `AndroidManifest`.
+
+### iOS
+
+Thêm 3 key vào `Info.plist` (thay `1234567890123456789` bằng app id của bạn):
+
+```xml
+<key>ZaloAppID</key>
+<string>1234567890123456789</string>
+
+<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLName</key><string>zalo</string>
+    <key>CFBundleURLSchemes</key>
+    <array><string>zalo-1234567890123456789</string></array>
+  </dict>
+</array>
+
+<key>LSApplicationQueriesSchemes</key>
+<array>
+  <string>zalosdk</string>
+  <string>zaloshareext</string>
+</array>
+```
+
+Rồi thêm một dòng vào `AppDelegate` để nhận URL callback từ Zalo:
 
 ```swift
+import RnZaloToolkit
+
 func application(_ app: UIApplication, open url: URL,
                  options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
   if ZaloToolkit.handle(url: url, options: options) { return true }
-  return false   // chain hiện có của bạn (Google Sign-In...) giữ nguyên
+  return false
 }
 ```
 
-Chi tiết: [setup Android](docs/guides/setup-android.md) ·
+Chi tiết đầy đủ: [setup Android](docs/guides/setup-android.md) ·
 [setup iOS](docs/guides/setup-ios.md)
 
-Kiểm tra config bất cứ lúc nào, không cần build:
+Kiểm tra đã cấu hình đúng chưa, không cần build:
 
 ```sh
 npx rn-zalo-toolkit-doctor
@@ -67,40 +77,55 @@ npx rn-zalo-toolkit-doctor
 ## Dùng
 
 ```ts
-import { login, ZaloError, ZaloErrorCode, ZaloExchangeMode, ZaloLoginVia } from 'rn-zalo-toolkit'
+import { login, ZaloError, ZaloErrorCode } from 'rn-zalo-toolkit'
 
-try {
-  const result = await login({ via: ZaloLoginVia.APP_OR_WEB })
+async function signIn() {
+  try {
+    const result = await login()
 
-  // Kết quả là discriminated union, nên nhánh DEVICE có token ở mức type.
-  if (result.exchange === ZaloExchangeMode.DEVICE) {
-    await sendToBackend(result.accessToken)
-  }
-} catch (error) {
-  if (ZaloError.is(error, ZaloErrorCode.CANCELLED)) return
-
-  if (ZaloError.is(error, ZaloErrorCode.INVALID_CONFIG)) {
-    // Lỗi config mang sẵn giá trị cần dán lên Zalo portal.
-    console.log(error.signatureHashKey, error.packageName)
+    // Gửi oauthCode cho backend để backend đổi lấy token.
+    await sendToBackend(result.oauthCode)
+  } catch (error) {
+    if (ZaloError.is(error, ZaloErrorCode.CANCELLED)) {
+      return // user bấm huỷ, không phải lỗi
+    }
+    if (ZaloError.is(error, ZaloErrorCode.ZALO_NOT_INSTALLED)) {
+      // gợi ý cài Zalo, hoặc gọi lại login({ via: 'web' })
+    }
+    throw error
   }
 }
 ```
 
-Các giá trị dạng chuỗi đều có sẵn enum: `ZaloErrorCode`, `ZaloLoginVia`, `ZaloExchangeMode`,
-`ZaloErrorPhase`, `ZaloEventName`, `ZaloChannel`, `ZaloPlatform`, `ZaloInstallIssueCode`. Chúng
-là object `as const` chứ không phải `enum` của TypeScript, nên vẫn nhận string literal - code cũ
-viết `'CANCELLED'` không vỡ.
+Mọi hàm đều reject bằng `ZaloError` với một `code` cố định, nên bạn xử lý được từng trường hợp mà
+không phải đọc chuỗi message.
 
-API đầy đủ: [api.md](docs/reference/api.md) · Error code: [errors.md](docs/reference/errors.md) ·
-[Xử lý sự cố](docs/troubleshooting.md)
+## Có gì trong package
+
+- `login`, `logout`, `getProfile`, `refreshTokens`, `exchangeOAuthCode`, `isRefreshTokenValid`
+- `ZaloError` với tập mã lỗi cố định
+- Mock cho jest: `jest.mock('rn-zalo-toolkit', () => require('rn-zalo-toolkit/jest'))`
+- CLI kiểm tra cấu hình: `npx rn-zalo-toolkit-doctor`
+
+Phạm vi hiện tại là đăng nhập. Không có share, feed hay message.
+
+## Tài liệu
+
+- [API](docs/reference/api.md) - danh sách hàm và tham số
+- [Mã lỗi](docs/reference/errors.md) - từng mã nghĩa là gì và nên làm gì
+- [Xử lý sự cố](docs/troubleshooting.md) - gặp lỗi thì tra ở đây
+- [Setup Android](docs/guides/setup-android.md) · [Setup iOS](docs/guides/setup-ios.md)
+
+Nếu bạn muốn sửa hoặc đóng góp cho thư viện, [ghi chú nội bộ](docs/internals.md) giải thích lý do
+đằng sau các quyết định kỹ thuật.
 
 ## Yêu cầu
 
 | | |
 |---|---|
-| React Native | 0.85+ (New Architecture, TurboModule) |
-| iOS | 15.1+ · SDK Zalo `4.1.0120`, vendored qua SPM |
-| Android | minSdk 24 · SDK Zalo `me.zalo:sdk-auth` + `sdk-core` `4.24.1101`, pin cứng |
+| React Native | 0.85+ |
+| Android | minSdk 24 |
+| iOS | 15.1+ |
 
 ## Giấy phép
 

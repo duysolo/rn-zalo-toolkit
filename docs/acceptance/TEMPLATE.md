@@ -41,7 +41,7 @@ là thứ chứng minh "không treo" - chứ không phải cột PASS/FAIL.
 | A13 | Login lần đầu sau cài mới | | | | | ca hồi quy bug cũ |
 | A14 | App khác gửi intent `zalo-<appId>://` lúc không có phiên | | | | | không crash, không emit |
 | A15 | Login khi có RN modal đang mở (iOS) | | | | | |
-| A16 | **Android không có Play Services**, `via:'web'` | | | | | đây là đường đi CHÍNH trên Android |
+| A16 | Android không có Play Services, `via:'web'` | | | | | |
 | A17 | Bật "Don't keep activities", login | | | | | settle đúng một lần |
 
 > **A4 nhiều khả năng không dựng lại được** - Zalo không phát hành bản cũ. Một cách rẻ: dựng
@@ -94,8 +94,7 @@ là thứ chứng minh "không treo" - chứ không phải cột PASS/FAIL.
 
 | F1 | Đã login, gọi `login()` lần nữa không logout | | | token MỚI |
 | F2 | Login X → logout → login Y | | | đúng danh tính Y |
-| F3 | **2 brand (2 appId) cùng máy** | | | mỗi app đúng appId của mình |
-| F4 | charging-app + driver-app cùng máy | | | không phá phiên của nhau |
+| F3 | Hai app dùng hai appId khác nhau, cùng một máy | | | mỗi app nhận đúng appId của mình, không phá phiên của nhau |
 | F5 | Token hết hạn giữa phiên → `refreshTokens()` | | | |
 | F6 | `refreshToken` hết hạn | | | `INVALID_TOKEN`, phân biệt rõ với `NETWORK` |
 | F7 | Gỡ Zalo giữa lúc `via:'app'` đang chờ | | | settle, không treo |

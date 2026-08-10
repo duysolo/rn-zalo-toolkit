@@ -1,36 +1,19 @@
-# Setup - iOS
+# Setup iOS
 
-## SDK Zalo đến từ đâu
+## Bước 1 - Info.plist
 
-Không từ CocoaPods. Zalo không phát hành SDK iOS qua Swift Package Manager (repo chính hãng
-`VNG-Zalo/ZaloSDK-iOS` chỉ có `ZaloSDK.podspec`), nên thư viện tự bọc xcframework thành một Swift
-Package:
-
-```
-node_modules/rn-zalo-toolkit/ios/ZaloSDKBinary/Package.swift
-```
-
-Podspec của thư viện không khai `s.dependency` bên thứ ba nào, nó chỉ trỏ `vendored_frameworks`
-vào xcframework mà `Package.swift` mô tả. Bạn không cần thêm gì vào `Podfile`.
-
-React Native 0.85 vẫn autolink native module qua CocoaPods nên podspec vẫn phải tồn tại. Thứ đã
-bỏ được là dependency CocoaPods lên SDK Zalo. Khi React Native hỗ trợ autolink bằng SPM thì xoá
-podspec đi được, không đụng dòng Swift nào.
-
-## Info.plist
-
-Ba key:
+Thay `1234567890123456789` bằng app id của bạn:
 
 ```xml
 <key>ZaloAppID</key>
-<string>1993903030729882479</string>
+<string>1234567890123456789</string>
 
 <key>CFBundleURLTypes</key>
 <array>
   <dict>
     <key>CFBundleURLName</key><string>zalo</string>
     <key>CFBundleURLSchemes</key>
-    <array><string>zalo-1993903030729882479</string></array>
+    <array><string>zalo-1234567890123456789</string></array>
   </dict>
 </array>
 
@@ -41,18 +24,13 @@ Ba key:
 </array>
 ```
 
-Không cần gọi `ZaloSDK.sharedInstance()?.initialize(withAppId:)` trong `AppDelegate`. Thư viện
-đọc `ZaloAppID` và khởi tạo trong một `__attribute__((constructor))`, tức chạy trước
-`didFinishLaunching`.
+URL scheme phải là `zalo-` cộng app id, viết liền.
 
-Sớm như vậy là có lý do: `initializeWithAppId:` kích một request nạp settings từ server, và
-settings đó quyết định luồng đăng nhập nào sẽ chạy. Khởi tạo muộn thì lần login đầu tiên sau cold
-start có thể đi luồng khác với các lần sau.
+Không cần gọi hàm khởi tạo SDK trong `AppDelegate`. Thư viện đọc `ZaloAppID` và tự khởi tạo.
 
-## Một dòng bạn phải tự viết
+## Bước 2 - nhận URL callback
 
-iOS không cho pod chen vào `UIApplicationDelegate`/`UISceneDelegate` một cách sạch sẽ, nên phần
-này không tự động hoá được.
+Sau khi user đăng nhập, Zalo mở lại app bạn qua URL scheme. App phải chuyển URL đó cho thư viện.
 
 **AppDelegate:**
 
@@ -62,50 +40,46 @@ import RnZaloToolkit
 func application(_ app: UIApplication, open url: URL,
                  options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
   if ZaloToolkit.handle(url: url, options: options) { return true }
-  return GIDSignIn.sharedInstance.handle(url)   // chain của bạn giữ nguyên
+  return false
 }
 ```
 
-`handle` trả về giá trị thật của SDK chứ không phải `true` vô điều kiện, nên các handler phía sau
-vẫn nhận được URL không phải của Zalo.
+Nếu app bạn đã có sẵn Google Sign-In hay tương tự, cứ để chúng nối tiếp phía sau:
 
-**SceneDelegate - cần cả hai chỗ:**
+```swift
+  if ZaloToolkit.handle(url: url, options: options) { return true }
+  return GIDSignIn.sharedInstance.handle(url)
+```
+
+`ZaloToolkit.handle` chỉ trả `true` khi URL thật sự là của Zalo, nên handler phía sau vẫn nhận
+được URL của chúng.
+
+**Nếu app dùng SceneDelegate**, cần thêm ở cả hai hàm:
 
 ```swift
 func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
   contexts.forEach { _ = ZaloToolkit.handle($0) }
 }
 
-// Thiếu hàm này thì cold start qua Zalo hỏng, mà app đang chạy thì vẫn ổn - rất dễ bỏ sót.
 func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
            options connectionOptions: UIScene.ConnectionOptions) {
   connectionOptions.urlContexts.forEach { _ = ZaloToolkit.handle($0) }
 }
 ```
 
-Quên bước này thì `login({ via: 'app' })` sẽ trả `NOT_WIRED` khi hết timeout, và
-`verifyInstallation()` báo `URL_HANDLER_NOT_WIRED`.
+Hàm thứ hai xử lý trường hợp app đang tắt hẳn. Thiếu nó thì đăng nhập vẫn chạy khi app đang mở,
+chỉ hỏng khi mở app từ đầu - rất dễ bỏ sót.
 
-Lưu ý là thư viện chỉ kết luận sau khi đã thử một lần login qua app Zalo, chứ không đoán sớm hơn.
-Lý do: hai trong ba luồng đăng nhập của SDK (`WKWebView` nhúng trong app, và
-`SFAuthenticationSession`) không sinh `openURL` nào cả, mà việc chọn luồng thì do server Zalo
-quyết lúc chạy. Kết luận sớm sẽ giết nhầm một phiên đăng nhập đang chạy bình thường.
+Quên bước 2 thì `login({ via: 'app' })` sẽ trả lỗi `NOT_WIRED`.
 
-Muốn biết chắc mà không cần login thử thì chạy `npx rn-zalo-toolkit-doctor`, nó đọc file config
-chứ không suy đoán.
+## Bước 3 - đăng ký app trên Zalo
 
-## Privacy manifest
+Vào [Zalo for Developers](https://developers.zalo.me) và khai **Bundle ID** của app iOS.
 
-SDK Zalo `4.1.0120` không có `PrivacyInfo.xcprivacy`. Thư viện ship manifest cho code của chính
-nó, còn phần thuộc SDK thì app phải tự khai:
+## Bước 4 - privacy manifest
 
-| Category | Reason | SDK dùng để làm gì |
-|---|---|---|
-| `NSPrivacyAccessedAPICategoryUserDefaults` | `CA92.1` | `NSUserDefaults` lưu token và state |
-| `NSPrivacyAccessedAPICategoryFileTimestamp` | `C617.1` | `attributesOfItemAtPath:` + `NSFileCreationDate` để định danh thiết bị |
-
-Không cần `SystemBootTime`, `DiskSpace` hay `ActiveKeyboards`. Keychain `SecItem*` không nằm
-trong danh sách required-reason.
+Apple yêu cầu khai lý do dùng một số API. SDK Zalo không tự khai nên app bạn phải khai, thêm vào
+`PrivacyInfo.xcprivacy`:
 
 ```xml
 <key>NSPrivacyAccessedAPITypes</key>
@@ -125,33 +99,24 @@ trong danh sách required-reason.
 </array>
 ```
 
-**App Store Connect - Data Collection.** Apple tính cả dữ liệu do SDK bên thứ ba thu thập. SDK
-Zalo có `ZDKDeviceTracker` đọc `identifierForVendor`, `CTTelephonyNetworkInfo` và gọi
-`centralized.zaloapp.com`. Tối thiểu khai **Identifiers → Device ID** và **Usage Data → Product
-Interaction**.
+Trong **App Store Connect → Data Collection**, Apple tính cả dữ liệu do SDK bên thứ ba thu thập.
+SDK Zalo đọc thông tin định danh thiết bị, nên tối thiểu khai:
 
-## Nâng version SDK Zalo
+- Identifiers → Device ID
+- Usage Data → Product Interaction
+
+## CocoaPods
+
+Bạn không cần thêm gì vào `Podfile`. SDK Zalo đi kèm trong package dưới dạng Swift Package, không
+tải từ CocoaPods.
+
+React Native 0.85 vẫn dùng CocoaPods để tự nối native module, nên `pod install` vẫn chạy như bình
+thường. Chỉ là nó không kéo SDK Zalo về nữa.
+
+## Kiểm tra lại
 
 ```sh
-# 1. Sửa sdkVersions.ios.zaloSdk trong packages/rn-zalo-toolkit/package.json
-# 2. Tải lại xcframework (script tự cắt slice không dùng)
-npm run vendor:sync
-# 3. Kiểm tra binary
-npm run check:zalosdk
+npx rn-zalo-toolkit-doctor
 ```
 
-`npm run check:upstream` báo khi Zalo ra bản mới, và đã chạy sẵn theo lịch trong CI.
-
-## Hai thứ đang theo dõi trong binary
-
-`npm run check:zalosdk` cảnh báo hai điểm. Chúng không chặn build, nhưng nếu chuyển thành lỗi
-thật thì phải xem lại việc bọc SDK chính hãng:
-
-1. Slice cho thiết bị vẫn dùng `LC_VERSION_MIN_IPHONEOS` (minos 9.0), là định dạng có từ trước
-   Xcode 11.
-2. Binary tham chiếu cứng `SFAuthenticationSession`, deprecated từ iOS 12. Nếu Apple gỡ khỏi
-   runtime thì app chết ngay lúc launch (dyld). Đây không phải lỗi build nên không CI nào bắt
-   được.
-
-Slice `armv7`/`i386` thì không phải vấn đề: script vendor đã cắt bỏ, mà kể cả còn thì linker vẫn
-chọn `arm64`.
+Lệnh này đọc file cấu hình của app và báo thiếu gì. Nó không cần build và không cần thiết bị.
