@@ -73,6 +73,14 @@ export interface ZaloErrorDetails {
   packageName?: string
   bundleId?: string
   appId?: string
+  /**
+   * Chỉ có ở lỗi của `login()` trên Android: nhật ký của lượt đó - môi trường máy lúc bắt đầu
+   * (`env`: Zalo có hiện với PackageManager không, activity nhận uỷ quyền, cờ phía máy chủ của
+   * SDK...) và chuỗi sự kiện (`events`: mở app/trình duyệt, kết quả activity, lỗi nguyên bản
+   * của SDK). Không chứa oauth code, token hay thông tin cá nhân - ghi thẳng vào log được.
+   * Hình dạng dùng để chẩn đoán, KHÔNG phải hợp đồng ổn định: đừng rẽ nhánh theo nó.
+   */
+  diagnostics?: Record<string, unknown>
 }
 
 export class ZaloError extends Error {
@@ -84,6 +92,7 @@ export class ZaloError extends Error {
   public readonly packageName?: string
   public readonly bundleId?: string
   public readonly appId?: string
+  public readonly diagnostics?: Record<string, unknown>
 
   public constructor(code: ZaloErrorCode, message: string, details: ZaloErrorDetails = {}) {
     super(message)
@@ -96,6 +105,7 @@ export class ZaloError extends Error {
     this.packageName = details.packageName
     this.bundleId = details.bundleId
     this.appId = details.appId
+    this.diagnostics = details.diagnostics
     // Giữ prototype chain khi transpile xuống ES5 (một số app tiêu thụ vẫn dùng target cũ).
     Object.setPrototypeOf(this, ZaloError.prototype)
   }

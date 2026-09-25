@@ -34,7 +34,7 @@ try {
 | `INVALID_TOKEN` | Token hết hạn hoặc không hợp lệ | Đăng nhập lại |
 | `PROFILE_RESTRICTED` | Zalo không trả profile cho IP ngoài Việt Nam | Đừng để hỏng luồng đăng nhập, để backend lấy profile |
 | `RATE_LIMITED` | Gọi quá nhiều lần | Chờ rồi thử lại |
-| `UNKNOWN` | Trường hợp chưa phân loại | Log `error.nativeCode` và `error.nativeMessage` |
+| `UNKNOWN` | Trường hợp chưa phân loại | Log `error.nativeCode`, `error.nativeMessage` và `error.diagnostics` |
 
 Tập mã này cố định, nên `switch (error.code)` sẽ được TypeScript nhắc nếu bạn thiếu nhánh.
 
@@ -50,6 +50,25 @@ Tập mã này cố định, nên `switch (error.code)` sẽ được TypeScript
 | `signatureHashKey` | Chỉ có ở `INVALID_CONFIG` trên Android - dán giá trị này lên portal |
 | `packageName` | Android |
 | `bundleId` | iOS |
+| `diagnostics` | Chỉ ở lỗi của `login()` trên Android - nhật ký của lượt đó, xem dưới |
+
+## `diagnostics`: nhật ký của một lượt `login()` (Android)
+
+`UNKNOWN` gộp nhiều mã gốc khác nghĩa (-5018 state lệch, -8000, -7003, -7010, exception khi mở
+activity...). Khi chỉ một vài máy lỗi, mã lỗi không đủ để biết vì sao. Mọi lỗi của `login()` trên
+Android mang thêm `error.diagnostics` - ghi thẳng nó vào log gửi về:
+
+- `env` - chụp lúc bắt đầu: máy (`display` là bản ROM), Zalo có hiện với PackageManager không
+  (`sdkSeesZalo` là đúng câu SDK hỏi), activity nhận uỷ quyền, service trạng thái của Zalo
+  (`platformService`), cờ phía máy chủ `useWebViewForUnloginZalo`, trình duyệt mặc định.
+- `events` - chuỗi sự kiện có mốc `t` (ms từ lúc gọi): `authenticate`, `hostPause`/`hostResume`,
+  `activityCreated` (`WebLoginActivity` = đường WebView, `BrowserLoginActivity` = trình duyệt gọi
+  ngược về), `activityResult`, `authenError` (mã NGUYÊN BẢN + `fromSource`), `reject`.
+- Với -5018: `extInfo` (`object` mới là V4) và `state` (`absent`/`empty`/`set`) cùng `stateDeltaMs`
+  (0-6000 = state của lượt này; âm lớn = kết quả lạc của lượt trước).
+
+Không chứa oauth code, token, uid, tên hay ngày sinh - chỉ mã lỗi, câu lỗi của SDK, cờ, dạng giá
+trị và tên khoá. Hình dạng dùng để chẩn đoán, **không** phải hợp đồng ổn định: đừng rẽ nhánh theo nó.
 
 ## `CANCELLED` không phải lỗi
 

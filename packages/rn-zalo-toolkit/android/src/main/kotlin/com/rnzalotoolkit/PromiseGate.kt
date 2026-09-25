@@ -9,6 +9,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.UiThreadUtil
 import com.zing.zalo.zalosdk.core.exception.InitializedException
 import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONObject
 
 /**
  * Bảo đảm MỘT promise settle đúng MỘT lần, trong mọi nhánh, và luôn có trần thời gian.
@@ -21,6 +22,11 @@ class PromiseGate(
   timeoutMs: Long,
   private val phase: ZaloErrorPhase,
   private val onSettle: (() -> Unit)? = null,
+  /**
+   * Chỉ `login()` dùng: trả nhật ký của lượt ([LoginTrace]) để đính vào
+   * `userInfo.details.diagnostics`. Gọi ĐÚNG MỘT lần, ngay trước khi reject.
+   */
+  private val diagnostics: ((ZaloThrowable) -> JSONObject?)? = null,
 ) {
   private val settled = AtomicBoolean(false)
   private val handler = Handler(Looper.getMainLooper())
@@ -52,9 +58,18 @@ class PromiseGate(
     // BẮT BUỘC dùng overload có `userInfo`. Overload ba tham số (code, message, throwable)
     // chỉ mang được mã và câu chữ sang JS - `phase`, `nativeCode`, `signatureHashKey` sẽ
     // mất sạch, trong khi chính chúng là thứ khiến lỗi cấu hình sửa được trong một phút.
-    val userInfo = Arguments.createMap().apply { putString("details", error.detailsJson()) }
+    val userInfo = Arguments.createMap().apply { putString("details", detailsWithDiagnostics(error)) }
     promise.reject(error.code.name, error.humanMessage, error, userInfo)
     return true
+  }
+
+  /** Nhật ký hỏng thì vẫn reject bằng `details` gốc - chẩn đoán không được chặn đường settle. */
+  private fun detailsWithDiagnostics(error: ZaloThrowable): String {
+    val details = error.detailsJson()
+    val provide = diagnostics ?: return details
+    return runCatching {
+      JSONObject(details).apply { provide(error)?.let { put("diagnostics", it) } }.toString()
+    }.getOrDefault(details)
   }
 
   private fun finish() {

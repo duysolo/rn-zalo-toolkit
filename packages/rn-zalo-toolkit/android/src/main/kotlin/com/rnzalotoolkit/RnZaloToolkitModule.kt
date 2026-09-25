@@ -1,10 +1,12 @@
 package com.rnzalotoolkit
 
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.BaseActivityEventListener
+import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.UiThreadUtil
@@ -18,6 +20,7 @@ import com.zing.zalo.zalosdk.oauth.OAuthCompleteListener
 import com.zing.zalo.zalosdk.oauth.OauthResponse
 import com.zing.zalo.zalosdk.oauth.ZaloSDK
 import com.zing.zalo.zalosdk.oauth.model.ErrorResponse
+import java.lang.ref.WeakReference
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -40,6 +43,22 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
    * là tự giữ tham chiếu mạnh.
    */
   private val activeListener = AtomicReference<OAuthCompleteListener?>(null)
+  /** Nhật ký của lượt `login()` đang chạy - xem [LoginTrace]. Null khi không có lượt nào. */
+  private val activeTrace = AtomicReference<LoginTrace?>(null)
+  /** Activity đã mở lượt đăng nhập, để biết kết quả có quay về đúng nó không (máy gập tạo lại activity). */
+  private val authActivity = AtomicReference<WeakReference<Activity>?>(null)
+
+  /**
+   * Mốc app rời/về tiền cảnh trong lúc chờ Zalo - thường là dấu hiệu app Zalo hay trình duyệt
+   * đã mở ra, và khoảng cách từ `authenticateReturned` tới `hostPause` lộ ra việc SDK chờ
+   * service của Zalo (~5 s khi ROM chặn bind). KHÔNG coi việc thiếu `hostPause` là bằng chứng:
+   * máy gập/chia màn hình (multi-resume, Android 10+) có thể không pause app khi Zalo mở cạnh bên.
+   */
+  private val lifecycleListener = object : LifecycleEventListener {
+    override fun onHostResume() { activeTrace.get()?.event("hostResume", noisy = true) }
+    override fun onHostPause() { activeTrace.get()?.event("hostPause", noisy = true) }
+    override fun onHostDestroy() { activeTrace.get()?.event("hostDestroy", noisy = true) }
+  }
 
   private val activityEventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(
@@ -59,6 +78,16 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
       val gate = pendingGate.get()
       if (gate == null || gate.isSettled) return
 
+      // Ghi TRƯỚC khi chuyển cho SDK: SDK gọi listener đồng bộ, ghi sau thì thứ tự sai.
+      activeTrace.get()?.let { trace ->
+        trace.event("activityResult") {
+          put("requestCode", requestCode)
+          put("resultCode", resultCode)
+          put("sameActivity", authActivity.get()?.get() === activity)
+          putActivityResult(data, trace.authWallMs)
+        }
+      }
+
       runCatching { ZaloSDK.Instance.onActivityResult(activity, requestCode, resultCode, data) }
 
       // CỐ Ý KHÔNG suy ra CANCELLED từ `resultCode`.
@@ -71,12 +100,14 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
 
   init {
     reactContext.addActivityEventListener(activityEventListener)
+    reactContext.addLifecycleEventListener(lifecycleListener)
   }
 
   override fun getName(): String = NAME
 
   override fun invalidate() {
     reactApplicationContext.removeActivityEventListener(activityEventListener)
+    reactApplicationContext.removeLifecycleEventListener(lifecycleListener)
     pendingGate.get()?.reject(
       ErrorMapping.simple(
         ZaloErrorCode.CANCELLED,
@@ -113,21 +144,61 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
 
     val pkce = Pkce.generate()
     val attemptId = UUID.randomUUID().toString()
+    val trace = LoginTrace(attemptId)
+    trace.event("login") {
+      put("via", via.name)
+      put("exchange", exchangeMode)
+    }
+    val application = reactApplicationContext.applicationContext as? Application
+    val activityCallbacks = TraceActivityCallbacks(trace)
     // THỨ TỰ QUAN TRỌNG: nhả listener TRƯỚC khi mở cổng single-flight.
     // Đảo lại thì `login()` #2 có thể chen vào giữa, gán `activeListener = listener2`, rồi
     // `releaseListener()` của phiên #1 mới chạy và xoá mất listener của phiên #2 - promise
     // #2 treo im lặng tới timeout.
-    val gate = PromiseGate(promise, timeoutMs, ZaloErrorPhase.authorize) {
-      releaseListener()
-      pendingGate.set(null)
-      loginInFlight.set(false)
-    }
+    val gate = PromiseGate(
+      promise, timeoutMs, ZaloErrorPhase.authorize,
+      onSettle = {
+        releaseListener()
+        pendingGate.set(null)
+        activeTrace.compareAndSet(trace, null)
+        runCatching { application?.unregisterActivityLifecycleCallbacks(activityCallbacks) }
+        loginInFlight.set(false)
+      },
+      diagnostics = { error ->
+        trace.event("reject") {
+          put("code", error.code.name)
+          put("phase", error.phase.name)
+          error.nativeCode?.let { put("nativeCode", it) }
+          error.cause?.let { put("cause", "${it.javaClass.name}: ${it.message}") }
+        }
+        trace.toJson()
+      },
+    )
+    activeTrace.set(trace)
     pendingGate.set(gate)
+    runCatching { application?.registerActivityLifecycleCallbacks(activityCallbacks) }
+    // SAU khi có gate: bản chụp gọi ~15 câu hỏi PackageManager qua binder; một câu treo thì
+    // timeout của gate vẫn settle lượt này và mở lại cổng single-flight.
+    runCatching {
+      trace.setEnvironment(
+        LoginEnvironment.snapshot(reactApplicationContext, reactApplicationContext.currentActivity)
+      )
+    }
+    // Gate đã settle trong lúc chụp (binder treo tới timeout, hoặc `logout()` chen vào) -
+    // promise đã reject, đừng mở Zalo cho một lượt không còn ai chờ. Gỡ lại callbacks vì
+    // `onSettle` có thể đã chạy TRƯỚC khi chúng được đăng ký.
+    if (gate.isSettled) {
+      runCatching { application?.unregisterActivityLifecycleCallbacks(activityCallbacks) }
+      return
+    }
 
-    val listener = buildListener(gate, attemptId, pkce.verifier, exchangeMode, includeRefresh)
+    val listener = buildListener(gate, trace, attemptId, pkce.verifier, exchangeMode, includeRefresh)
     activeListener.set(listener)
 
     PromiseGate.runWithActivity(gate, reactApplicationContext.currentActivity) { activity ->
+      authActivity.set(WeakReference(activity))
+      trace.authWallMs = System.currentTimeMillis()
+      trace.event("authenticate") { put("activity", activity.javaClass.simpleName) }
       // Đặt cờ NGAY TRƯỚC `authenticate`, trên cùng thread đọc nó. `Authenticator` khởi tạo
       // `useWeakReferenceCallback = true`, và field đó không volatile - đặt ở JS thread thì
       // UI thread có thể vẫn thấy `true`, lưu WeakReference, listener bị GC, và
@@ -136,6 +207,9 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
       ZaloSDK.Instance.authenticateZaloWithAuthenType(
         activity, via, pkce.challenge, extInfo, listener
       )
+      // Đồng bộ trừ khi cờ `useWebViewForUnloginZalo` bật: khi đó SDK hỏi service của Zalo
+      // trên thread riêng (tới 5 s) rồi mới mở app hoặc trình duyệt.
+      trace.event("authenticateReturned")
     }
   }
 
@@ -158,6 +232,7 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
    */
   private fun buildListener(
     gate: PromiseGate,
+    trace: LoginTrace,
     attemptId: String,
     verifier: String,
     exchangeMode: String,
@@ -166,6 +241,11 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
 
     override fun onGetOAuthComplete(response: OauthResponse) {
       val oauthCode = response.oauthCode
+      trace.event("oauthComplete") {
+        put("hasCode", !oauthCode.isNullOrEmpty())
+        put("channel", channelName(response.channel))
+        put("isRegister", response.isRegister)
+      }
       if (oauthCode.isNullOrEmpty()) {
         gate.reject(
           ErrorMapping.simple(ZaloErrorCode.UNKNOWN, ZaloErrorPhase.authorize)
@@ -197,19 +277,41 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
         return
       }
 
+      trace.event("exchange")
       PromiseGate.runWithContext(gate, reactApplicationContext) { context ->
         ZaloSDK.Instance.getAccessTokenByOAuthCode(context, oauthCode, verifier) { data ->
+          trace.event("tokenResult") {
+            put("hasData", data != null)
+            if (data != null) {
+              put("error", data.optInt("error", 0))
+              put("extCode", data.optInt("extCode", 0))
+              put("hasAccessToken", data.optString("access_token").isNotEmpty())
+              data.optString("error_description").ifEmpty { data.optString("message") }
+                .takeIf { it.isNotEmpty() }?.let { put("message", it) }
+            }
+          }
           handleTokenResult(gate, data, oauthCode, channel, response.isRegister, includeRefresh)
         }
       }
     }
 
     override fun onAuthenError(errorResponse: ErrorResponse) {
+      // Nguyên bản trước ánh xạ: `fromSource` (app / browser / web_view / web_login) là thứ
+      // duy nhất cho biết SDK đã đi đường nào, và `ZaloThrowable` không mang nó.
+      trace.event("authenError") {
+        put("errorCode", errorResponse.errorCode)
+        put("extCode", errorResponse.extCode)
+        errorResponse.errorMsg?.let { put("errorMsg", it) }
+        errorResponse.errorReason?.takeIf { it.isNotEmpty() }?.let { put("errorReason", it) }
+        errorResponse.errorDescription?.takeIf { it.isNotEmpty() }?.let { put("errorDescription", it) }
+        errorResponse.fromSource?.takeIf { it.isNotEmpty() }?.let { put("fromSource", it) }
+      }
       gate.reject(nativeError(errorResponse, ZaloErrorPhase.authorize))
     }
 
     // ← Trước đây TREO: SDK chạy nhánh mặc định, listener không bao giờ được gọi.
     override fun onZaloNotInstalled(context: Context?) {
+      trace.event("zaloNotInstalled")
       gate.reject(
         ErrorMapping.simple(ZaloErrorCode.ZALO_NOT_INSTALLED, ZaloErrorPhase.authorize)
       )
@@ -217,6 +319,7 @@ class RnZaloToolkitModule(reactContext: ReactApplicationContext) :
 
     // ← Trước đây TREO.
     override fun onZaloOutOfDate(context: Context?) {
+      trace.event("zaloOutOfDate")
       gate.reject(
         ErrorMapping.simple(ZaloErrorCode.ZALO_OUT_OF_DATE, ZaloErrorPhase.authorize)
       )
